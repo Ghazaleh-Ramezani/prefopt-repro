@@ -1,0 +1,40 @@
+---
+license: apache-2.0
+task_categories:
+  - text-generation
+tags:
+  - preference-data
+  - alignment
+  - evaluation
+size_categories:
+  - 1K<n<10K
+---
+
+# {{ run }} — generations and judgements
+
+Model outputs and judge verdicts produced while evaluating {{ run }}. Released so
+that the reported win-rate can be re-audited without re-running training.
+
+## Contents
+
+| Field | Description |
+|---|---|
+| `prompt` | Held-out prompt from `{{ cfg.data.dataset }}` |
+| `policy_completion` | Sample from the trained policy |
+| `baseline_completion` | Sample from the SFT baseline |
+| `verdict_ab` | Judge verdict with the policy shown first |
+| `verdict_ba` | Judge verdict with the order swapped |
+| `score` | 1.0 win / 0.5 tie or swap-inconsistent / 0.0 loss |
+
+## Construction
+
+- {{ results.n_prompts if results else 'N' }} held-out prompts, never seen in SFT, RM, or policy training.
+- Sampling temperature 0.7, {{ results.seeds if results else 'N' }} generation seeds.
+- Every pair judged twice with positions swapped; disagreement scored as a tie
+  and reported as `swap_consistency`.
+
+## Intended use
+
+Auditing the reported win-rate, studying judge position bias, and as a starting
+point for human agreement studies. **Not** a preference-training dataset: the
+labels come from an LLM judge, not from humans.

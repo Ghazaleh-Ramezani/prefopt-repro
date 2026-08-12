@@ -1,0 +1,93 @@
+---
+base_model: {{ cfg.model.base_model }}
+library_name: peft
+license: apache-2.0
+tags:
+  - alignment
+  - preference-optimization
+  - {{ cfg.stage }}
+  - trl
+  - lora
+datasets:
+  - {{ cfg.data.dataset }}
+pipeline_tag: text-generation
+---
+
+# {{ run }}
+
+{{ cfg.stage | upper }} policy trained on top of `{{ cfg.model.base_model }}`, part of a
+controlled comparison of preference-optimization methods. Every number below is
+produced by `python -m prefopt.report` from the run directory, not typed by hand.
+
+## Result
+
+{% if results %}
+| Metric | Value |
+|---|---|
+| Win-rate vs SFT baseline | **{{ "%.1f"|format(results.win_rate_mean * 100) }}%** |
+| Seed range ({{ results.seeds }} seeds) | {{ "%.1f"|format(results.win_rate_min * 100) }}% – {{ "%.1f"|format(results.win_rate_max * 100) }}% |
+| Eval prompts | {{ results.n_prompts }} |
+| Judge | {{ results.judge }}{% if results.judge_model %} ({{ results.judge_model }}){% endif %} |
+| Swap consistency | {{ "%.3f"|format(results.per_seed[0].swap_consistency) }} |
+
+Win-rate is position-swapped: each pair is judged in both orders and counted as
+a win only when the judge agrees with itself. Confidence intervals are
+percentile bootstrap over per-example scores.
+{% else %}
+_No `results.json` in this run directory — run `python -m prefopt.evaluate` first._
+{% endif %}
+
+## Training
+
+| Setting | Value |
+|---|---|
+| Method | {{ cfg.stage | upper }} |
+| KL coefficient (beta) | {{ cfg.method.beta }} |
+{% if cfg.stage == "grpo" %}| Group size (G) | {{ cfg.method.num_generations }} |
+| Reward model | `{{ cfg.method.reward_model_path }}` |
+{% endif %}{% if cfg.stage == "dpo" %}| Loss type | {{ cfg.method.loss_type }} |
+{% endif %}| Learning rate | {{ cfg.train.learning_rate }} |
+| Epochs | {{ cfg.train.num_train_epochs }} |
+| LoRA r / alpha | {{ cfg.model.lora_r }} / {{ cfg.model.lora_alpha }} |
+| Seed | {{ cfg.seed }} |
+| Preference data | `{{ cfg.data.dataset }}` ({{ cfg.data.max_train_samples }} pairs) |
+
+## Reward-hacking diagnostics
+
+{% if diagnostics %}
+| Diagnostic | Policy | Reference (SFT) |
+|---|---|---|
+| Mean RM score | {{ "%.3f"|format(diagnostics.mean_rm_score_policy) }} | {{ "%.3f"|format(diagnostics.mean_rm_score_reference) }} |
+| Length / reward Spearman | {{ "%.3f"|format(diagnostics.length_reward_corr) }} | — |
+| distinct-4 | {{ "%.3f"|format(diagnostics.distinct_4_policy) }} | {{ "%.3f"|format(diagnostics.distinct_4_reference) }} |
+| Mean response length (chars) | {{ "%.0f"|format(diagnostics.style_policy.mean_chars) }} | {{ "%.0f"|format(diagnostics.style_reference.mean_chars) }} |
+{% if diagnostics.kl_from_reference %}| Mean per-token KL from reference | {{ "%.4f"|format(diagnostics.kl_from_reference) }} | — |
+{% endif %}
+
+The gap between RM-judged win-rate ({{ "%.3f"|format(diagnostics.rm_judged_win_rate) }})
+and the held-out judge win-rate is the proxy-overoptimisation signal: a wide gap
+means the policy is winning against the reward model rather than against the task.
+{% else %}
+_No `diagnostics.json` — run `python -m prefopt.diagnostics` to populate this section._
+{% endif %}
+
+## Reproduction
+
+```bash
+git clone <repo-url> && cd prefopt-repro
+pip install -e ".[train]"
+python -m prefopt.train_sft --config configs/sft.yaml
+python -m prefopt.train_rm  --config configs/rm.yaml
+python -m prefopt.{{ 'train_' + cfg.stage }} --config configs/{{ cfg.stage }}.yaml \
+    --set method.beta={{ cfg.method.beta }}
+```
+
+The exact resolved config is in `config.resolved.yaml` and the library versions
+are in `environment.json`, both in this repository.
+
+## Limitations
+
+- Single base model at {{ cfg.model.base_model.split('-')[-2] if '-' in cfg.model.base_model else 'small' }} scale; conclusions may not transfer to larger policies.
+- LoRA rather than full-parameter training, which bounds how far the policy can move.
+- Judge is a single LLM; agreement with human preference was not measured on this run.
+- Single preference dataset, so domain generalisation is untested.

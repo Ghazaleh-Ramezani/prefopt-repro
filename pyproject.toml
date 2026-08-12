@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prefopt-repro"
+version = "0.1.0"
+description = "Controlled reproduction of DPO and GRPO with reward modelling, evaluation, and reward-hacking diagnostics."
+requires-python = ">=3.10"
+dependencies = [
+  "pyyaml>=6.0",
+  "numpy>=1.26",
+  "jinja2>=3.1",
+]
+
+[project.optional-dependencies]
+train = [
+  # Pinned to a tested window: TRL's trainer signatures move between minor
+  # versions, so an unpinned install is the most likely reason this repo
+  # breaks for someone else.
+  "torch>=2.4",
+  "transformers>=4.51,<5",
+  "trl>=0.17,<0.21",
+  "peft>=0.14",
+  "datasets>=3.0",
+  "accelerate>=1.2",
+  "deepspeed>=0.15",
+  "bitsandbytes>=0.44",
+  "sentencepiece",
+]
+serve = ["vllm>=0.8"]
+judge = ["anthropic>=0.40"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+# Provenance capture and optional-dependency probes are allowed to swallow
+# exceptions: a missing GPU or a missing git binary must never fail a run.
+ignore = ["E501", "B905"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

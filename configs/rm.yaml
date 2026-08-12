@@ -1,0 +1,15 @@
+_base_: base.yaml
+name: rm_full
+stage: rm
+init_adapter: null          # RM trains from the base model, not the SFT policy
+train:
+  output_dir: runs/rm_full
+  learning_rate: 5.0e-6
+  num_train_epochs: 1.0
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 8
+method:
+  rm_num_labels: 1
+notes: >
+  Bradley-Terry reward model. Held-out pairwise accuracy is reported to
+  rm_eval.json and becomes the x-axis of the RM-quality ablation.

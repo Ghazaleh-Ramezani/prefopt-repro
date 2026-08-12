@@ -1,0 +1,55 @@
+---
+base_model: {{ cfg.model.base_model }}
+library_name: peft
+license: apache-2.0
+tags:
+  - reward-model
+  - alignment
+  - rlhf
+  - trl
+datasets:
+  - {{ cfg.data.dataset }}
+pipeline_tag: text-classification
+---
+
+# {{ run }}
+
+Bradley-Terry reward model over `{{ cfg.model.base_model }}`, trained on
+{% if rm_eval %}{{ rm_eval.n_train_pairs }}{% else %}N{% endif %} preference pairs
+({{ (cfg.data.rm_pair_fraction * 100) | round | int }}% of the available data).
+
+Trained as one point on a reward-model-quality axis: the same GRPO recipe is run
+against RMs of deliberately different accuracy so that downstream win-rate can be
+plotted against reward-model quality rather than assumed to be independent of it.
+
+## Evaluation
+
+{% if rm_eval %}
+| Metric | Value |
+|---|---|
+| Held-out pairwise accuracy | **{{ "%.4f"|format(rm_eval.eval_accuracy) }}** |
+| Training pairs | {{ rm_eval.n_train_pairs }} |
+| Data fraction | {{ rm_eval.rm_pair_fraction }} |
+{% else %}
+_No `rm_eval.json` in this run directory._
+{% endif %}
+
+Pairwise accuracy on a held-out split is a weak proxy for reward-model quality:
+it says nothing about calibration or about behaviour off the preference-data
+distribution, which is exactly where a policy will push it.
+
+## Usage
+
+```python
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
+
+tok = AutoTokenizer.from_pretrained("{{ run }}")
+rm = AutoModelForSequenceClassification.from_pretrained("{{ run }}", num_labels=1)
+score = rm(**tok(f"{prompt}\n\n{response}", return_tensors="pt")).logits[0][0]
+```
+
+## Limitations
+
+- Optimising against this model will find its failure modes; treat scores as a
+  training signal, not an evaluation metric.
+- Trained on a single preference dataset with known verbosity bias.

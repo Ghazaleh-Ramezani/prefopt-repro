@@ -1,0 +1,35 @@
+# Shared defaults. Stage configs inherit via `_base_: base.yaml`.
+seed: 17
+
+model:
+  base_model: Qwen/Qwen2.5-1.5B-Instruct
+  torch_dtype: bfloat16
+  attn_implementation: flash_attention_2
+  use_peft: true
+  load_in_4bit: false
+  lora_r: 32
+  lora_alpha: 64
+  lora_dropout: 0.05
+
+data:
+  dataset: HuggingFaceH4/ultrafeedback_binarized
+  train_split: train_prefs
+  eval_split: test_prefs
+  sft_train_split: train_sft
+  max_train_samples: 20000
+  max_eval_samples: 500
+  max_prompt_length: 768
+  max_length: 1536
+  rm_pair_fraction: 1.0
+
+train:
+  bf16: true
+  gradient_checkpointing: true
+  warmup_ratio: 0.1
+  lr_scheduler_type: cosine
+  logging_steps: 10
+  eval_steps: 100
+  save_steps: 200
+  save_total_limit: 2
+  report_to: none        # set to wandb once you have a project
+  deepspeed: null        # set to ds_zero3.json for multi-GPU
