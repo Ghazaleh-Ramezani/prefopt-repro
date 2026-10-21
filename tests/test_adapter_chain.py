@@ -112,3 +112,20 @@ def test_missing_init_adapter_fails_loudly(runs, tmp_path):
     )
     with pytest.raises(FileNotFoundError, match="init_adapter"):
         adapter_chain(runs["dpo"])
+
+
+def test_trainer_checkpoint_inherits_the_run_chain(runs, tmp_path):
+    # Trainer checkpoints have no config.resolved.yaml of their own. Loading
+    # one must still apply the SFT adapter first, or every intermediate
+    # checkpoint in a per-checkpoint analysis is a model that was never trained.
+    ckpt = tmp_path / "runs" / "dpo" / "checkpoint-4"
+    PeftModel.from_pretrained(
+        PeftModel.from_pretrained(AutoModelForCausalLM.from_pretrained(runs["base"]), runs["sft"]).merge_and_unload(),
+        runs["dpo"],
+    ).save_pretrained(ckpt)
+    assert not (ckpt / "config.resolved.yaml").exists()
+    assert adapter_chain(str(ckpt)) == [runs["sft"], str(ckpt)]
+    reloaded = load_for_inference(str(ckpt), runs["base"], dtype=torch.float32)
+    torch.testing.assert_close(
+        _logits(reloaded, runs["ids"]), runs["trained_logits"], atol=1e-5, rtol=1e-5
+    )
