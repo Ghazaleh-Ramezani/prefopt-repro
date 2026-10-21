@@ -36,23 +36,23 @@ COMMON=(
 )
 
 python -m prefopt.train_sft --config configs/sft.yaml "${COMMON[@]}" \
-    --output-dir "$RUNS/sft"
+    --set name=sft --output-dir "$RUNS/sft"
 
 # A randomly initialised model needs a far larger learning rate than the
 # 1.5B default to learn anything in a few epochs.
 python -m prefopt.train_rm --config configs/rm.yaml "${COMMON[@]}" \
     --set train.num_train_epochs=8 --set train.learning_rate=5.0e-3 \
-    --set model.lora_r=16 --output-dir "$RUNS/rm"
+    --set model.lora_r=16 --set name=rm --output-dir "$RUNS/rm"
 
 python -m prefopt.train_dpo --config configs/dpo.yaml "${COMMON[@]}" \
     --set init_adapter="$RUNS/sft" --set train.num_train_epochs=2 \
-    --set train.learning_rate=1.0e-4 --output-dir "$RUNS/dpo_b0.1"
+    --set train.learning_rate=1.0e-4 --set name=dpo_b0.1 --output-dir "$RUNS/dpo_b0.1"
 
 python -m prefopt.train_grpo --config configs/grpo.yaml "${COMMON[@]}" \
     --set init_adapter="$RUNS/sft" --set method.reward_model_path="$RUNS/rm" \
     --set method.num_generations=4 --set train.per_device_train_batch_size=4 \
     --set train.gradient_accumulation_steps=2 --set method.max_completion_length=48 \
-    --set data.max_train_samples=32 --output-dir "$RUNS/grpo_g4"
+    --set data.max_train_samples=32 --set name=grpo_g4 --output-dir "$RUNS/grpo_g4"
 
 python -m prefopt.evaluate --config configs/dpo.yaml "${COMMON[@]}" \
     --policy "$RUNS/dpo_b0.1" --baseline "$RUNS/sft" \
