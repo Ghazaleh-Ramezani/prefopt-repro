@@ -61,16 +61,42 @@ def stylistic_tells(completions: list[str]) -> dict[str, float]:
     }
 
 
-def spearman(x: list[float], y: list[float]) -> float:
+def _average_ranks(values: list[float]) -> Any:
+    """Ranks with ties given the mean of the positions they occupy.
+
+    Ordinal ranks (argsort of argsort) break ties by input order, which
+    invents a correlation where none exists: a constant input gets ranks
+    0, 1, 2, ... and correlates perfectly with any sorted partner.
+    """
     import numpy as np
 
-    def rank(values: list[float]) -> Any:
-        order = np.argsort(np.argsort(np.asarray(values, dtype=float)))
-        return order.astype(float)
+    v = np.asarray(values, dtype=float)
+    order = np.argsort(v, kind="mergesort")
+    ranks = np.empty(len(v), dtype=float)
+    sorted_v = v[order]
+    i = 0
+    while i < len(v):
+        j = i
+        while j + 1 < len(v) and sorted_v[j + 1] == sorted_v[i]:
+            j += 1
+        ranks[order[i : j + 1]] = (i + j) / 2.0
+        i = j + 1
+    return ranks
 
-    rx, ry = rank(x), rank(y)
+
+def spearman(x: list[float], y: list[float]) -> float:
+    """Spearman rank correlation with average ranks for ties.
+
+    Returns NaN when either input is constant, where the correlation is
+    undefined — matching scipy.stats.spearmanr.
+    """
+    import numpy as np
+
+    if len(x) != len(y):
+        raise ValueError(f"spearman needs equal lengths, got {len(x)} and {len(y)}")
+    rx, ry = _average_ranks(x), _average_ranks(y)
     if rx.std() == 0 or ry.std() == 0:
-        return 0.0
+        return float("nan")
     return float(np.corrcoef(rx, ry)[0, 1])
 
 
@@ -80,24 +106,25 @@ def mean_token_kl(
     prompts: list[str],
     completions: list[str],
     max_length: int = 1536,
+    base_model: str | None = None,
 ) -> float:
     """Mean per-token KL(policy || reference) over the completion tokens of the
     policy's own samples. This is the quantity `beta` is supposed to control,
     so measuring it is how you check that beta did what you think it did."""
     import torch
     import torch.nn.functional as F
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoTokenizer
+
+    from .modeling import load_for_inference
 
     tok = AutoTokenizer.from_pretrained(policy_path)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
-    policy = AutoModelForCausalLM.from_pretrained(
-        policy_path, torch_dtype=torch.bfloat16, device_map="auto"
-    ).eval()
-    reference = AutoModelForCausalLM.from_pretrained(
-        reference_path, torch_dtype=torch.bfloat16, device_map="auto"
-    ).eval()
+    # Both paths are adapter directories; without the base model neither opens.
+    base = base_model or policy_path
+    policy = load_for_inference(policy_path, base, head="causal")
+    reference = load_for_inference(reference_path, base, head="causal")
 
     totals, counts = 0.0, 0
     for prompt, completion in zip(prompts, completions):
@@ -133,6 +160,14 @@ def mean_token_kl(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Reward-hacking diagnostics")
     parser.add_argument("--config", required=True)
+    parser.add_argument(
+        "--set",
+        dest="overrides",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Dotted-path override, matching the training stages (repeatable).",
+    )
     parser.add_argument("--policy", required=True)
     parser.add_argument("--reference", required=True, help="Usually the SFT checkpoint.")
     parser.add_argument("--rm-path", required=True)
@@ -143,14 +178,14 @@ def main() -> None:
 
     from .evaluate import RewardModelJudge, generate
 
-    cfg = load_config(args.config)
+    cfg = load_config(args.config, args.overrides)
     prompts = load_eval_prompts(cfg, n=args.n)
 
     logger.info("Sampling from policy and reference")
     policy_out = generate(args.policy, prompts, cfg.model.base_model, seed=0)
     reference_out = generate(args.reference, prompts, cfg.model.base_model, seed=0)
 
-    scorer = RewardModelJudge(rm_path=args.rm_path)
+    scorer = RewardModelJudge(rm_path=args.rm_path, base_model=cfg.model.base_model)
     policy_scores = [scorer.score(p, c) for p, c in zip(prompts, policy_out)]
     reference_scores = [scorer.score(p, c) for p, c in zip(prompts, reference_out)]
     lengths = [len(c) for c in policy_out]
@@ -178,7 +213,12 @@ def main() -> None:
 
     if not args.skip_kl:
         report["kl_from_reference"] = mean_token_kl(
-            args.policy, args.reference, prompts, policy_out, cfg.data.max_length
+            args.policy,
+            args.reference,
+            prompts,
+            policy_out,
+            cfg.data.max_length,
+            base_model=cfg.model.base_model,
         )
 
     out = Path(args.out or Path(args.policy) / "diagnostics.json")
