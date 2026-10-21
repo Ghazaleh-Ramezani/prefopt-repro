@@ -74,6 +74,15 @@ def test_unknown_key_fails_loudly(config_dir):
         load_config(config_dir / "bad.yaml")
 
 
+def test_unknown_top_level_key_fails_loudly(config_dir):
+    """A misspelt section name must not be dropped in favour of defaults."""
+    (config_dir / "bad_top.yaml").write_text(
+        yaml.safe_dump({"_base_": "base.yaml", "trian": {"learning_rate": 1e-3}})
+    )
+    with pytest.raises(ValueError, match="Unknown config keys for RunCfg"):
+        load_config(config_dir / "bad_top.yaml")
+
+
 def test_resolved_config_roundtrips(config_dir, tmp_path):
     cfg = load_config(config_dir / "dpo.yaml", ["method.beta=0.02"])
     path = save_config(cfg, tmp_path / "run")
