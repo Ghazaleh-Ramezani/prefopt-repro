@@ -44,12 +44,19 @@ def collect(runs_dir: Path) -> list[dict[str, Any]]:
         if not cfg_path.exists():
             continue
         cfg = yaml.safe_load(cfg_path.read_text()) or {}
+        stage = cfg.get("stage", "")
+        method = cfg.get("method", {})
+        # Every resolved config carries every method default, so a knob is
+        # only reported for the stage that reads it: beta for DPO and GRPO,
+        # the group size for GRPO, the pair fraction for the reward model.
         row: dict[str, Any] = {
             "run": run_dir.name,
-            "stage": cfg.get("stage", ""),
-            "beta": cfg.get("method", {}).get("beta"),
-            "num_generations": cfg.get("method", {}).get("num_generations"),
-            "rm_pair_fraction": cfg.get("data", {}).get("rm_pair_fraction"),
+            "stage": stage,
+            "beta": method.get("beta") if stage in {"dpo", "grpo"} else None,
+            "num_generations": method.get("num_generations") if stage == "grpo" else None,
+            "rm_pair_fraction": (
+                cfg.get("data", {}).get("rm_pair_fraction") if stage == "rm" else None
+            ),
         }
 
         rm_eval = run_dir / "rm_eval.json"

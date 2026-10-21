@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import torch
+import yaml
 from transformers import (
     AutoModelForCausalLM,
     AutoModelForSequenceClassification,
@@ -82,6 +84,100 @@ def load_policy(cfg: RunCfg, adapter_path: str | None = None) -> Any:
     if cfg.train.gradient_checkpointing:
         model.config.use_cache = False
     return model
+
+
+def inference_dtype(preferred: str | None = None) -> Any:
+    """bfloat16 where the hardware supports it, float32 otherwise.
+
+    Evaluation and diagnostics used to hardcode bfloat16, which is fine on an
+    A100 and either very slow or unsupported on CPU.
+    """
+    if preferred and preferred != "bfloat16":
+        return DTYPES[preferred]
+    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+        return torch.bfloat16
+    return torch.float32
+
+
+def _is_adapter_dir(path: str) -> bool:
+    p = Path(path)
+    return (p / "adapter_config.json").exists() and not (p / "config.json").exists()
+
+
+def adapter_chain(path: str) -> list[str]:
+    """The adapters to apply, oldest first, to rebuild the model a run trained.
+
+    DPO and GRPO start from the SFT adapter merged into the base
+    (`load_policy`), then train a fresh adapter on top. The saved DPO adapter
+    is therefore a delta on *SFT-merged* weights, while its adapter config
+    names the raw base. Applying it to the raw base drops the SFT delta and
+    scores a model that was never trained. Each run records its starting
+    adapter as `init_adapter` in config.resolved.yaml, so the chain can be
+    walked back to the base.
+    """
+    chain: list[str] = []
+    current: str | None = path
+    while current is not None:
+        if not _is_adapter_dir(current):
+            raise FileNotFoundError(
+                f"{current} is not an adapter directory, but a run lists it as "
+                f"its init_adapter; refusing to rebuild a different model."
+            )
+        if current in chain:
+            raise ValueError(f"init_adapter cycle at {current}")
+        chain.append(current)
+
+        parent = None
+        resolved = Path(current) / "config.resolved.yaml"
+        if resolved.exists():
+            parent = (yaml.safe_load(resolved.read_text()) or {}).get("init_adapter")
+        if parent and not Path(parent).exists():
+            # Recorded relative to the working directory at training time;
+            # also look beside the run directory.
+            sibling = Path(current).parent / Path(parent).name
+            if sibling.exists():
+                parent = str(sibling)
+        current = parent
+    return list(reversed(chain))
+
+
+def load_for_inference(
+    path: str,
+    base_model: str,
+    *,
+    head: str = "causal",
+    dtype: Any = None,
+    num_labels: int = 1,
+) -> Any:
+    """Load a run directory for inference, resolving LoRA adapters.
+
+    `trainer.save_model()` under PEFT writes adapter weights only, so every run
+    directory this repo produces holds an `adapter_config.json` and no
+    `config.json`. `AutoModel*.from_pretrained` cannot open that: the base model
+    has to be loaded first and the adapter applied on top. Passing the run
+    directory straight to `from_pretrained` raises before a single prompt is
+    scored, which is why `base_model` is threaded through to here.
+    """
+    dtype = dtype if dtype is not None else inference_dtype()
+    device_map = "auto" if torch.cuda.is_available() else None
+
+    if head == "causal":
+        loader, kwargs = AutoModelForCausalLM, {}
+    elif head == "sequence":
+        loader, kwargs = AutoModelForSequenceClassification, {"num_labels": num_labels}
+    else:
+        raise ValueError(f"Unknown head: {head}")
+
+    if not _is_adapter_dir(path):
+        return loader.from_pretrained(path, dtype=dtype, device_map=device_map, **kwargs).eval()
+
+    from peft import PeftModel
+
+    model = loader.from_pretrained(base_model, dtype=dtype, device_map=device_map, **kwargs)
+    for adapter in adapter_chain(path):
+        logger.info("Applying and merging adapter %s", adapter)
+        model = PeftModel.from_pretrained(model, adapter).merge_and_unload()
+    return model.eval()
 
 
 def load_reward_model(cfg: RunCfg, path: str | None = None) -> tuple[Any, Any]:

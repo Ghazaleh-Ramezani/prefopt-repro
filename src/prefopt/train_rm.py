@@ -40,6 +40,9 @@ def main() -> None:
         max_grad_norm=cfg.train.max_grad_norm,
         bf16=cfg.train.bf16,
         gradient_checkpointing=cfg.train.gradient_checkpointing,
+        gradient_checkpointing_kwargs={
+            "use_reentrant": cfg.train.gradient_checkpointing_use_reentrant
+        },
         logging_steps=cfg.train.logging_steps,
         eval_strategy=cfg.train.eval_strategy,
         eval_steps=cfg.train.eval_steps,
