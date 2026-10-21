@@ -3,7 +3,8 @@
 #
 # Builds the offline fixture (scripts/make_cpu_fixture.py), then runs
 # SFT -> reward model -> DPO -> GRPO -> win-rate evaluation -> reward-hacking
-# diagnostics -> report. Takes a few minutes on two cores.
+# diagnostics -> Goodhart gap at every checkpoint -> report. Takes about ten
+# minutes on two cores.
 #
 # What it checks is the wiring: each stage consumes the previous stage's
 # checkpoint, and evaluation rebuilds the model each stage trained. A 0.67M
@@ -44,15 +45,24 @@ python -m prefopt.train_rm --config configs/rm.yaml "${COMMON[@]}" \
     --set train.num_train_epochs=8 --set train.learning_rate=5.0e-3 \
     --set model.lora_r=16 --set name=rm --output-dir "$RUNS/rm"
 
+# An independently seeded reward model stands in for the external judge
+# offline; on GPU the external judge is the LLM judge in prefopt.evaluate.
+python -m prefopt.train_rm --config configs/rm.yaml "${COMMON[@]}" \
+    --set seed=1 --set train.num_train_epochs=8 --set train.learning_rate=5.0e-3 \
+    --set model.lora_r=16 --set name=rm_gold --output-dir "$RUNS/rm_gold"
+
+# Keep every checkpoint, so the Goodhart gap can be traced across training.
+CKPT=(--set train.save_steps=4 --set train.save_total_limit=null)
+
 python -m prefopt.train_dpo --config configs/dpo.yaml "${COMMON[@]}" \
     --set init_adapter="$RUNS/sft" --set train.num_train_epochs=2 \
-    --set train.learning_rate=1.0e-4 --set name=dpo_b0.1 --output-dir "$RUNS/dpo_b0.1"
+    --set train.learning_rate=1.0e-4 "${CKPT[@]}" --set name=dpo_b0.1 --output-dir "$RUNS/dpo_b0.1"
 
 python -m prefopt.train_grpo --config configs/grpo.yaml "${COMMON[@]}" \
     --set init_adapter="$RUNS/sft" --set method.reward_model_path="$RUNS/rm" \
     --set method.num_generations=4 --set train.per_device_train_batch_size=4 \
     --set train.gradient_accumulation_steps=2 --set method.max_completion_length=48 \
-    --set data.max_train_samples=32 --set name=grpo_g4 --output-dir "$RUNS/grpo_g4"
+    --set data.max_train_samples=32 "${CKPT[@]}" --set name=grpo_g4 --output-dir "$RUNS/grpo_g4"
 
 python -m prefopt.evaluate --config configs/dpo.yaml "${COMMON[@]}" \
     --policy "$RUNS/dpo_b0.1" --baseline "$RUNS/sft" \
@@ -63,8 +73,20 @@ for policy in dpo_b0.1 grpo_g4; do
       --policy "$RUNS/$policy" --reference "$RUNS/sft" --rm-path "$RUNS/rm" --n 12
 done
 
+for policy in dpo_b0.1 grpo_g4; do
+  python -m prefopt.goodhart --config configs/dpo.yaml "${COMMON[@]}" \
+      --run "$RUNS/$policy" --reference "$RUNS/sft" --proxy-rm "$RUNS/rm" \
+      --judge rm --judge-rm "$RUNS/rm_gold" --n 12 --seeds 2
+done
+
 mkdir -p "$OUT"
 python -m prefopt.report --runs "$RUNS" --out "$OUT/RESULTS.md"
+
+# ZeRO-3 sharding check: two CPU ranks against a single-process run.
+if python -c "import deepspeed" 2>/dev/null; then
+  DS_ACCELERATOR=cpu FIX="$FIX" torchrun --nproc_per_node 2 \
+      scripts/zero3_cpu_check.py --out "$OUT/zero3_cpu_check.json"
+fi
 cat > "$OUT/README.md" <<'EOF'
 # CPU validation run
 
@@ -74,6 +96,11 @@ Produced by `bash scripts/cpu_validation.sh` on an offline fixture: a
 
 The run checks that each stage trains, saves its checkpoint, and that the next
 stage and the evaluation harness rebuild exactly the model that was trained.
+`goodhart.json` in the DPO and GRPO folders traces the Goodhart gap at every
+saved checkpoint, with an independently seeded reward model (`rm_gold`)
+standing in for the external judge. `zero3_cpu_check.json` compares DeepSpeed
+ZeRO-3 training on two CPU ranks against a single-process run of the same
+steps.
 On a model this small the win-rates and diagnostics exercise the code paths;
 comparisons between methods come from the 1.5B ablation grid.
 
@@ -87,7 +114,7 @@ for run in "$RUNS"/*/; do
   name=$(basename "$run")
   mkdir -p "$OUT/$name"
   for f in config.resolved.yaml environment.json rm_eval.json dpo_eval.json \
-           grpo_eval.json results.json diagnostics.json; do
+           grpo_eval.json results.json diagnostics.json goodhart.json; do
     [ -f "$run/$f" ] && cp "$run/$f" "$OUT/$name/"
   done
 done

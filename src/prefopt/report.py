@@ -34,6 +34,7 @@ COLUMNS = [
     ("swap_consistency", "Swap cons."),
     ("length_reward_corr", "len/reward rho"),
     ("kl", "KL from ref"),
+    ("goodhart_gap", "Goodhart gap (last ckpt)"),
 ]
 
 
@@ -81,6 +82,10 @@ def collect(runs_dir: Path) -> list[dict[str, Any]]:
             d = load_json(diag)
             row["length_reward_corr"] = d.get("length_reward_corr")
             row["kl"] = d.get("kl_from_reference")
+
+        goodhart = run_dir / "goodhart.json"
+        if goodhart.exists():
+            row["goodhart_gap"] = load_json(goodhart).get("summary", {}).get("gap_last")
 
         rows.append(row)
     return rows

@@ -104,6 +104,23 @@ def _is_adapter_dir(path: str) -> bool:
     return (p / "adapter_config.json").exists() and not (p / "config.json").exists()
 
 
+def _resolved_config(run: Path) -> Path | None:
+    """The config.resolved.yaml that describes `run`.
+
+    Trainer checkpoints (`<run>/checkpoint-<step>/`) hold adapter weights and
+    trainer state but no config.resolved.yaml; they share the run's starting
+    adapter, so the run directory's file applies to them. Without this, an
+    intermediate DPO or GRPO checkpoint loads onto the raw base and silently
+    drops the SFT adapter, the same failure as an unchained final run.
+    """
+    own = run / "config.resolved.yaml"
+    if own.exists():
+        return own
+    if run.name.startswith("checkpoint-") and (run.parent / "config.resolved.yaml").exists():
+        return run.parent / "config.resolved.yaml"
+    return None
+
+
 def adapter_chain(path: str) -> list[str]:
     """The adapters to apply, oldest first, to rebuild the model a run trained.
 
@@ -128,8 +145,8 @@ def adapter_chain(path: str) -> list[str]:
         chain.append(current)
 
         parent = None
-        resolved = Path(current) / "config.resolved.yaml"
-        if resolved.exists():
+        resolved = _resolved_config(Path(current))
+        if resolved is not None:
             parent = (yaml.safe_load(resolved.read_text()) or {}).get("init_adapter")
         if parent and not Path(parent).exists():
             # Recorded relative to the working directory at training time;
