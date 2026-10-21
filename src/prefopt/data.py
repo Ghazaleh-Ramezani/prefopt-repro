@@ -20,6 +20,7 @@ from .utils import get_logger
 logger = get_logger(__name__)
 
 PREFERENCE_COLUMNS = ["prompt", "chosen", "rejected"]
+SFT_COLUMNS = ["messages"]
 
 
 def _subsample(ds: Dataset, n: int | None, seed: int) -> Dataset:
@@ -33,9 +34,36 @@ def _keep_columns(ds: Dataset, columns: list[str]) -> Dataset:
     return ds.remove_columns(drop) if drop else ds
 
 
+def _drop_redundant_prompt(ds: Dataset) -> Dataset:
+    """Preference splits come in two shapes.
+
+    Explicit prompt: `prompt` is a message list and `chosen`/`rejected` hold
+    only the assistant turn. Implicit prompt: `chosen`/`rejected` are complete
+    conversations that already contain the user turn, and `prompt` is a plain
+    string kept for convenience.
+
+    TRL requires one or the other. Handed the implicit shape with `prompt`
+    still attached, `apply_chat_template` indexes the string as a message list
+    and raises `TypeError: string indices must be integers`. Datasets in the
+    second shape -- ultrafeedback_binarized among them -- therefore need the
+    `prompt` column dropped before training.
+    """
+    if "prompt" not in ds.column_names:
+        return ds
+    if isinstance(ds[0]["prompt"], str) and isinstance(ds[0].get("chosen"), list):
+        logger.info("Implicit-prompt preference format: dropping string `prompt` column")
+        return ds.remove_columns(["prompt"])
+    return ds
+
+
 def load_sft_dataset(cfg: RunCfg) -> dict[str, Dataset]:
     """SFT on the instruction-following split. Returns {'train', 'eval'}."""
     train = load_dataset(cfg.data.dataset, split=cfg.data.sft_train_split)
+    # Keep only the message list. Splits such as ultrafeedback_binarized's
+    # train_sft also carry a plain-string `prompt`, and TRL reads a `prompt`
+    # key as conversational -- a list of {role, content} -- so leaving it in
+    # makes apply_chat_template try to render a str as a message.
+    train = _keep_columns(train, SFT_COLUMNS)
     train = _subsample(train, cfg.data.max_train_samples, cfg.seed)
     # Hold out from train so the SFT eval loss is not contaminated by the
     # preference splits we later evaluate win-rate on.
@@ -53,8 +81,8 @@ def load_preference_dataset(cfg: RunCfg, fraction: float = 1.0) -> dict[str, Dat
     train = load_dataset(cfg.data.dataset, split=cfg.data.train_split)
     eval_ = load_dataset(cfg.data.dataset, split=cfg.data.eval_split)
 
-    train = _keep_columns(train, PREFERENCE_COLUMNS)
-    eval_ = _keep_columns(eval_, PREFERENCE_COLUMNS)
+    train = _drop_redundant_prompt(_keep_columns(train, PREFERENCE_COLUMNS))
+    eval_ = _drop_redundant_prompt(_keep_columns(eval_, PREFERENCE_COLUMNS))
 
     train = _subsample(train, cfg.data.max_train_samples, cfg.seed)
     if fraction < 1.0:

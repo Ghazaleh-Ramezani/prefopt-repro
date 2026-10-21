@@ -25,6 +25,7 @@ data:
 train:
   bf16: true
   gradient_checkpointing: true
+  gradient_checkpointing_use_reentrant: false   # see docs/DEBUGGING_LOG.md -- true silently freezes the body under LoRA
   warmup_ratio: 0.1
   lr_scheduler_type: cosine
   logging_steps: 10

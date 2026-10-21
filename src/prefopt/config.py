@@ -69,6 +69,13 @@ class TrainCfg:
     max_grad_norm: float = 1.0
     bf16: bool = True
     gradient_checkpointing: bool = True
+    # Must stay False whenever the base model is frozen, which is every stage
+    # here because every stage uses LoRA. Reentrant checkpointing decides
+    # whether to recurse into a checkpointed block by looking at whether that
+    # block's *inputs* require grad; with frozen base weights they do not, so
+    # autograd skips the transformer body and only the head trains. Nothing
+    # errors -- the loss simply stops moving. See docs/DEBUGGING_LOG.md.
+    gradient_checkpointing_use_reentrant: bool = False
     logging_steps: int = 10
     eval_strategy: str = "steps"
     eval_steps: int = 100
@@ -187,6 +194,14 @@ def load_config(path: str | Path, overrides: list[str] | None = None) -> RunCfg:
             raise ValueError(f"Override must look like key=value, got: {item!r}")
         key, _, value = item.partition("=")
         _apply_override(raw, key.strip(), _coerce(value.strip()))
+
+    # Section-level keys are checked by _from_dict; the top level needs the
+    # same check, or a misspelt section (`trian:`) is dropped and the run
+    # quietly uses every default in it.
+    known_top = {f.name for f in fields(RunCfg)}
+    unknown_top = set(raw) - known_top
+    if unknown_top:
+        raise ValueError(f"Unknown config keys for RunCfg: {sorted(unknown_top)}")
 
     # Nested dataclasses need explicit construction.
     cfg = RunCfg(
