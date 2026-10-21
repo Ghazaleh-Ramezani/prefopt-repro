@@ -6,17 +6,42 @@ are large. Four stages — SFT, reward model, DPO, GRPO — one config system, o
 evaluation harness, and a set of reward-hacking diagnostics that run on every
 checkpoint.
 
-The question the repo answers: **how do KL strength, group size, and reward-model
-quality trade off against win-rate, and where does optimising the proxy start to
-cost real quality?**
+The question the repo is built to answer: **how do KL strength, group size, and
+reward-model quality trade off against win-rate, and where does optimising the
+proxy start to cost real quality?**
+
+## Status
+
+**Verified end to end.** Every stage runs and hands its checkpoint to the
+next: SFT → reward model → DPO and GRPO → position-swapped win-rate →
+reward-hacking diagnostics → report. `scripts/cpu_validation.sh` runs the whole
+path on a CPU in a few minutes, with no GPU and no Hub access, on an offline
+fixture model built by `scripts/make_cpu_fixture.py`. Its artifacts, each with
+a resolved config and an environment record, are in
+[`results/cpu_validation/`](results/cpu_validation/).
+
+Bringing the pipeline up end to end surfaced ten code defects, each fixed
+and covered by a regression test. Two of them change results without raising
+an error: reentrant gradient checkpointing freezing the model body under LoRA,
+and DPO/GRPO checkpoints being reloaded onto the raw base rather than the
+SFT-merged model they were trained on. Symptom, isolation, cause and fix for
+each are in [`docs/DEBUGGING_LOG.md`](docs/DEBUGGING_LOG.md).
+
+**Next study:** the ablation grid below, at 1.5B on GPU. The grid is the
+design; the CPU validation run establishes the wiring the grid depends on.
 
 ## Quick start
 
 ```bash
 pip install -e ".[train,judge]"
 
-# 15-minute wiring check on a 0.5B model — numbers are meaningless, but a green
-# run means the pipeline is sound before you rent an H100.
+# Every stage end to end on a CPU, offline, in a few minutes: builds a tiny
+# fixture model and synthetic preference set, then runs SFT -> RM -> DPO ->
+# GRPO -> evaluation -> diagnostics -> report into results/cpu_validation/.
+bash scripts/cpu_validation.sh
+
+# The same path on a real 0.5B model, ~15 minutes on one GPU, before the
+# full grid on an H100.
 bash scripts/smoke_test.sh
 ```
 
@@ -87,7 +112,9 @@ from "the policy learned the reward model":
 | `stylistic_tells` | Header/bullet/enthusiasm rates climbing — the RM rewarding format over content |
 
 The over-optimisation curve — reward up, quality flat or down, KL climbing — is
-the intended headline finding of the GRPO sweep, not an incidental check.
+the intended headline finding of the GRPO sweep, not an incidental check. All
+five diagnostics compute end to end in the CPU validation run; the curve itself
+is what the 1.5B sweep is designed to trace.
 
 ## Configuration
 
@@ -151,11 +178,14 @@ scripts/            smoke test and full ablation grid
 tests/              CPU-only tests for config, rewards, stats, reporting
 ```
 
-## Known limitations
+## Scope
 
 Stated here rather than buried, because they bound what the results support:
 
-- One base-model family at 1.5B; nothing here shows the ordering holds at 7B+.
+- Win-rates in `results/cpu_validation/` come from an offline 0.67M-parameter
+  fixture and check the wiring. Method comparisons come from the 1.5B grid.
+- One base-model family at 1.5B; behaviour at 7B and above is a separate
+  question.
 - LoRA rather than full-parameter training, which limits policy movement.
 - A single LLM judge with no measured human agreement — `swap_consistency` is a
   self-consistency check, not a validity check.
