@@ -16,8 +16,9 @@ proxy start to cost real quality?**
 next: SFT → reward model → DPO and GRPO → position-swapped win-rate →
 reward-hacking diagnostics → report. `scripts/cpu_validation.sh` runs the whole
 path on a CPU in a few minutes, with no GPU and no Hub access, on an offline
-fixture model built by `scripts/make_cpu_fixture.py`. Its artifacts, each with
-a resolved config and an environment record, are in
+fixture model built by `scripts/make_cpu_fixture.py`. The fixture is seeded, so
+a rerun reproduces the published artifacts exactly. Each artifact carries a
+resolved config and an environment record (git SHA, library versions), in
 [`results/cpu_validation/`](results/cpu_validation/).
 
 Bringing the pipeline up end to end surfaced ten code defects, each fixed

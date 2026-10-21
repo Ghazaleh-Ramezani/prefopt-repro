@@ -18,8 +18,10 @@ audit of the evaluation and diagnostics code.
 Environment: 2 CPU cores, 7 GB RAM, no GPU, no Hugging Face Hub access. A
 0.67 M-parameter Qwen2-architecture model (4 layers, hidden 128) and a 240-pair
 synthetic preference set are built locally by `scripts/make_cpu_fixture.py`, and
-`scripts/cpu_validation.sh` reproduces the whole run. On a model that small the
-numbers exercise the code paths; the control-flow defects they expose are real.
+`scripts/cpu_validation.sh` reproduces the whole run. The fixture is seeded, so
+two runs of the script produce byte-identical results. On a model that small
+the numbers exercise the code paths; the control-flow defects they expose are
+real.
 
 ---
 
@@ -184,12 +186,16 @@ a fresh LoRA adapter on top of those merged weights. The saved DPO adapter is
 therefore a delta on the *SFT-merged* model — but its `adapter_config.json`
 names the raw base, and the loader applied it there. The result loads without
 error, generates text, scores, and is a model that was never trained: it has
-the DPO delta and none of the SFT one. An audit probe measured a maximum logit
-difference of 0.13 between the reloaded model and the trained one.
+the DPO delta and none of the SFT one.
 
-It also changed a diagnostic's sign. On the first run, `length_reward_corr`
-for the DPO policy read +0.476. With the model rebuilt correctly it reads
-−0.473. The earlier figure described the mis-loaded model.
+It also moves the diagnostics. On an early, unseeded build of the fixture an
+audit probe measured a maximum logit difference of 0.13 between the reloaded
+model and the trained one, and `length_reward_corr` for the DPO policy read
++0.476 mis-loaded against −0.473 rebuilt correctly: the sign flipped. On the
+seeded fixture now published the gap is smaller — maximum logit difference
+7e-4, `length_reward_corr` 0.448 mis-loaded against 0.385 rebuilt correctly.
+At 1.5B, where SFT is a full training stage, the mis-loaded model is missing
+all of it.
 
 **Fix:** each run already records its starting adapter as `init_adapter` in
 `config.resolved.yaml`. `modeling.adapter_chain` walks that record back to the
@@ -262,15 +268,17 @@ clean checkout on a CPU, and its artifacts are in `results/cpu_validation/`.
 The reward model reaches 1.0 held-out pairwise accuracy once the gradient path
 is intact and the learning rate suits a randomly initialised model. DPO moves
 its implicit-reward metrics in the right direction (eval `rewards/accuracies`
-1.0, margin 0.53), and position-swapped evaluation, bootstrap intervals and
-all five reward-hacking diagnostics compute on its output.
+1.0, margin 0.44), and position-swapped evaluation, bootstrap intervals and
+all five reward-hacking diagnostics compute on its output: RM-judged win-rate
+95.8% over two generation seeds (91.7% and 100%), swap consistency 1.0, no
+invalid verdicts.
 
 **Next:** the ablation grid — beta sweep, group size, reward-model quality — at
 1.5B on GPU. That is where the comparisons between methods come from; this run
 establishes the wiring they depend on.
 
 Two signals from the GRPO stage to watch at scale. `completions/clipped_ratio`
-stays near 1.0 on the fixture, meaning almost every rollout hits
+is 0.90–0.98 on the fixture, meaning almost every rollout hits
 `max_completion_length`, so rewards are computed on truncated text — a reason
 to set the completion length from the data rather than the default. And the
 logged KL stays near zero, as expected for a policy that barely moves from its

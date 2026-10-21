@@ -24,6 +24,7 @@ import shutil
 from pathlib import Path
 
 import datasets as hfds
+import torch
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers, trainers
 from transformers import AutoModelForCausalLM, PreTrainedTokenizerFast, Qwen2Config
 
@@ -79,7 +80,7 @@ def _row(i: int) -> dict:
     }
 
 
-def build(out: Path, n_train: int = 240, n_test: int = 60) -> None:
+def build(out: Path, n_train: int = 240, n_test: int = 60, seed: int = 0) -> None:
     model_dir, data_dir = out / "tiny-model", out / "prefdata"
     train = [_row(i) for i in range(n_train)]
     test = [_row(i + 1000) for i in range(n_test)]  # disjoint prompt ids
@@ -126,6 +127,9 @@ def build(out: Path, n_train: int = 240, n_test: int = 60) -> None:
         eos_token_id=fast.eos_token_id,
         pad_token_id=fast.pad_token_id,
     )
+    # Seeded so that every run of cpu_validation.sh starts from the same
+    # weights and reproduces the published artifacts.
+    torch.manual_seed(seed)
     model = AutoModelForCausalLM.from_config(cfg)
     model.save_pretrained(model_dir)
 
@@ -144,8 +148,9 @@ def build(out: Path, n_train: int = 240, n_test: int = 60) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", default="fixtures/cpu")
+    parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
-    build(Path(args.out))
+    build(Path(args.out), seed=args.seed)
 
 
 if __name__ == "__main__":
