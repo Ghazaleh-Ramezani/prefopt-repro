@@ -1,0 +1,257 @@
+{
+  "policy": "runs/cpu/dpo_b0.1",
+  "baseline": "runs/cpu/sft",
+  "judge": "rm",
+  "judge_model": null,
+  "n_prompts": 12,
+  "seeds": 2,
+  "win_rate_mean": 0.9583333333333333,
+  "win_rate_min": 0.9166666666666666,
+  "win_rate_max": 1.0,
+  "per_seed": [
+    {
+      "win_rate": 0.9166666666666666,
+      "ci95": [
+        0.75,
+        1.0
+      ],
+      "n": 12,
+      "wins": 11,
+      "ties": 0,
+      "losses": 1,
+      "swap_consistency": 1.0,
+      "invalid_verdicts": 0,
+      "mean_len_policy": 1797.9166666666667,
+      "mean_len_baseline": 1744.1666666666667,
+      "records": [
+        {
+          "prompt": "Describe antibiotics in simple terms.",
+          "verdict_ab": "B",
+          "verdict_ba": "A",
+          "score": 0.0,
+          "len_policy": 1993,
+          "len_baseline": 2020
+        },
+        {
+          "prompt": "Outline gradient descent in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1721,
+          "len_baseline": 1576
+        },
+        {
+          "prompt": "Describe entropy in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 2028,
+          "len_baseline": 1891
+        },
+        {
+          "prompt": "Outline binary search in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1600,
+          "len_baseline": 1588
+        },
+        {
+          "prompt": "Summarise black holes in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1770,
+          "len_baseline": 1695
+        },
+        {
+          "prompt": "Walk me through enzymes in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1848,
+          "len_baseline": 1669
+        },
+        {
+          "prompt": "Describe binary search in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1732,
+          "len_baseline": 1670
+        },
+        {
+          "prompt": "Clarify black holes in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1857,
+          "len_baseline": 1761
+        },
+        {
+          "prompt": "Explain osmosis in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1675,
+          "len_baseline": 1841
+        },
+        {
+          "prompt": "Summarise vaccines in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1664,
+          "len_baseline": 1662
+        },
+        {
+          "prompt": "Walk me through neural networks in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1867,
+          "len_baseline": 1831
+        },
+        {
+          "prompt": "Explain compound interest in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1820,
+          "len_baseline": 1726
+        }
+      ],
+      "seed": 0
+    },
+    {
+      "win_rate": 1.0,
+      "ci95": [
+        1.0,
+        1.0
+      ],
+      "n": 12,
+      "wins": 12,
+      "ties": 0,
+      "losses": 0,
+      "swap_consistency": 1.0,
+      "invalid_verdicts": 0,
+      "mean_len_policy": 1823.0,
+      "mean_len_baseline": 1776.25,
+      "records": [
+        {
+          "prompt": "Describe antibiotics in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1943,
+          "len_baseline": 1902
+        },
+        {
+          "prompt": "Outline gradient descent in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1538,
+          "len_baseline": 1606
+        },
+        {
+          "prompt": "Describe entropy in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1911,
+          "len_baseline": 1831
+        },
+        {
+          "prompt": "Outline binary search in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1839,
+          "len_baseline": 1606
+        },
+        {
+          "prompt": "Summarise black holes in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 2055,
+          "len_baseline": 2016
+        },
+        {
+          "prompt": "Walk me through enzymes in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1759,
+          "len_baseline": 1593
+        },
+        {
+          "prompt": "Describe binary search in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1791,
+          "len_baseline": 1806
+        },
+        {
+          "prompt": "Clarify black holes in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1835,
+          "len_baseline": 1898
+        },
+        {
+          "prompt": "Explain osmosis in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1688,
+          "len_baseline": 1701
+        },
+        {
+          "prompt": "Summarise vaccines in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1751,
+          "len_baseline": 1523
+        },
+        {
+          "prompt": "Walk me through neural networks in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1898,
+          "len_baseline": 2081
+        },
+        {
+          "prompt": "Explain compound interest in simple terms.",
+          "verdict_ab": "A",
+          "verdict_ba": "B",
+          "score": 1.0,
+          "len_policy": 1868,
+          "len_baseline": 1752
+        }
+      ],
+      "seed": 1
+    }
+  ],
+  "environment": {
+    "timestamp_utc": "2026-10-21T04:53:44.162539+00:00",
+    "git_sha": "a898850",
+    "git_dirty": false,
+    "python": "3.13.16",
+    "platform": "Linux-6.18.44-fc-v140-x86_64-with-glibc2.39",
+    "torch_version": "2.14.1+cu130",
+    "transformers_version": "4.57.6",
+    "trl_version": "0.20.0",
+    "peft_version": "0.21.2",
+    "datasets_version": "5.0.1",
+    "accelerate_version": "1.15.0",
+    "cuda": "13.0",
+    "gpu_count": 0,
+    "gpu_name": null
+  }
+}

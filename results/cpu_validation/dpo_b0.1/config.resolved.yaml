@@ -1,0 +1,69 @@
+name: dpo_b0.1
+stage: dpo
+seed: 17
+model:
+  base_model: fixtures/cpu/tiny-model
+  torch_dtype: float32
+  attn_implementation: eager
+  use_peft: true
+  load_in_4bit: false
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
+data:
+  dataset: fixtures/cpu/prefdata
+  train_split: train
+  eval_split: test
+  sft_train_split: validation
+  max_train_samples: 240
+  max_eval_samples: 60
+  max_prompt_length: 96
+  max_length: 320
+  rm_pair_fraction: 1.0
+train:
+  output_dir: runs/cpu/dpo_b0.1
+  learning_rate: 0.0001
+  num_train_epochs: 2
+  per_device_train_batch_size: 2
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 16
+  warmup_ratio: 0.1
+  lr_scheduler_type: cosine
+  weight_decay: 0.0
+  max_grad_norm: 1.0
+  bf16: false
+  gradient_checkpointing: true
+  gradient_checkpointing_use_reentrant: false
+  logging_steps: 10
+  eval_strategy: steps
+  eval_steps: 100
+  save_strategy: steps
+  save_steps: 200
+  save_total_limit: 2
+  report_to: none
+  deepspeed: null
+method:
+  beta: 0.1
+  loss_type: sigmoid
+  label_smoothing: 0.0
+  num_generations: 8
+  max_completion_length: 512
+  temperature: 0.9
+  use_vllm: false
+  reward_model_path: null
+  length_penalty_weight: 0.0
+  rm_num_labels: 1
+  packing: true
+init_adapter: runs/cpu/sft
+notes: 'beta is the KL anchor. Sweep {0.01, 0.05, 0.1, 0.5}; expect win-rate to peak
+  in the middle and reward-hacking diagnostics to worsen monotonically as beta falls.
+
+  '

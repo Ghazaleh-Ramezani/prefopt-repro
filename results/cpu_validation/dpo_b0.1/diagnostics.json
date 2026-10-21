@@ -1,0 +1,25 @@
+{
+  "policy": "runs/cpu/dpo_b0.1",
+  "reference": "runs/cpu/sft",
+  "reward_model": "runs/cpu/rm",
+  "n_prompts": 12,
+  "mean_rm_score_policy": 5.542837301890056,
+  "mean_rm_score_reference": 5.521756132443746,
+  "rm_judged_win_rate": 0.9166666666666666,
+  "length_reward_corr": 0.3846153846153847,
+  "distinct_4_policy": 1.0,
+  "distinct_4_reference": 1.0,
+  "style_policy": {
+    "header_rate": 0.0,
+    "bullet_rate": 0.0,
+    "enthusiasm_rate": 0.0,
+    "mean_chars": 1797.9166666666667
+  },
+  "style_reference": {
+    "header_rate": 0.0,
+    "bullet_rate": 0.0,
+    "enthusiasm_rate": 0.0,
+    "mean_chars": 1744.1666666666667
+  },
+  "kl_from_reference": 0.0016962889952880304
+}

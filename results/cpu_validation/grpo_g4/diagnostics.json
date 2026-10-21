@@ -1,0 +1,25 @@
+{
+  "policy": "runs/cpu/grpo_g4",
+  "reference": "runs/cpu/sft",
+  "reward_model": "runs/cpu/rm",
+  "n_prompts": 12,
+  "mean_rm_score_policy": 5.521790583928426,
+  "mean_rm_score_reference": 5.521756132443746,
+  "rm_judged_win_rate": 0.5,
+  "length_reward_corr": 0.6433566433566434,
+  "distinct_4_policy": 1.0,
+  "distinct_4_reference": 1.0,
+  "style_policy": {
+    "header_rate": 0.0,
+    "bullet_rate": 0.0,
+    "enthusiasm_rate": 0.0,
+    "mean_chars": 1743.3333333333333
+  },
+  "style_reference": {
+    "header_rate": 0.0,
+    "bullet_rate": 0.0,
+    "enthusiasm_rate": 0.0,
+    "mean_chars": 1744.1666666666667
+  },
+  "kl_from_reference": 1.5793115754549664e-09
+}
