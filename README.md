@@ -21,12 +21,20 @@ a rerun reproduces the published artifacts exactly. Each artifact carries a
 resolved config and an environment record (git SHA, library versions), in
 [`results/cpu_validation/`](results/cpu_validation/).
 
-Bringing the pipeline up end to end surfaced ten code defects, each fixed
-and covered by a regression test. Two of them change results without raising
+Bringing the pipeline up end to end surfaced twelve code defects, each fixed
+and covered by a regression test. Three of them change results without raising
 an error: reentrant gradient checkpointing freezing the model body under LoRA,
-and DPO/GRPO checkpoints being reloaded onto the raw base rather than the
-SFT-merged model they were trained on. Symptom, isolation, cause and fix for
-each are in [`docs/DEBUGGING_LOG.md`](docs/DEBUGGING_LOG.md).
+DPO/GRPO checkpoints being reloaded onto the raw base rather than the
+SFT-merged model they were trained on, and the reward-model judge scoring
+plain `prompt\n\nresponse` text while the reward model is trained on
+chat-template text. Symptom, isolation, cause and fix for each are in
+[`docs/DEBUGGING_LOG.md`](docs/DEBUGGING_LOG.md).
+
+**Small run on real data:**
+[`notebooks/small_real_run.ipynb`](notebooks/small_real_run.ipynb) runs
+SFT → reward model → DPO on Qwen2.5-0.5B-Instruct with UltraFeedback pairs and
+judges the win-rate with an independent public reward model, in roughly one to
+two hours on a free Colab T4.
 
 **Next study:** the ablation grid below, at 1.5B on GPU. The grid is the
 design; the CPU validation run establishes the wiring the grid depends on.

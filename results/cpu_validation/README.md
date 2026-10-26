@@ -6,6 +6,11 @@ Produced by `bash scripts/cpu_validation.sh` on an offline fixture: a
 
 The run checks that each stage trains, saves its checkpoint, and that the next
 stage and the evaluation harness rebuild exactly the model that was trained.
+`goodhart.json` in the DPO and GRPO folders traces the Goodhart gap at every
+saved checkpoint, with an independently seeded reward model (`rm_gold`)
+standing in for the external judge. `zero3_cpu_check.json` compares DeepSpeed
+ZeRO-3 training on two CPU ranks against a single-process run of the same
+steps.
 On a model this small the win-rates and diagnostics exercise the code paths;
 comparisons between methods come from the 1.5B ablation grid.
 

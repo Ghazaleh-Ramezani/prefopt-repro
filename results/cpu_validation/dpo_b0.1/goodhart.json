@@ -1,0 +1,95 @@
+{
+  "run": "runs/cpu/dpo_b0.1",
+  "reference": "runs/cpu/sft",
+  "proxy_reward_model": "runs/cpu/rm",
+  "external_judge": "rm:runs/cpu/rm_gold",
+  "n_prompts": 12,
+  "seeds": 2,
+  "rows": [
+    {
+      "step": 0,
+      "checkpoint": "sft",
+      "proxy_win_rate": 0.5,
+      "external_win_rate": 0.5,
+      "goodhart_gap": 0.0,
+      "external_swap_consistency": 1.0,
+      "external_invalid_verdicts": 0.0,
+      "mean_chars": 1744.1666666666667,
+      "length_reward_corr": 0.8181818181818183,
+      "kl_from_reference": 0.0
+    },
+    {
+      "step": 4,
+      "checkpoint": "checkpoint-4",
+      "proxy_win_rate": 0.7291666666666667,
+      "external_win_rate": 0.7083333333333333,
+      "goodhart_gap": 0.02083333333333337,
+      "external_swap_consistency": 1.0,
+      "external_invalid_verdicts": 0.0,
+      "mean_chars": 1769.9166666666667,
+      "length_reward_corr": 0.7062937062937064,
+      "kl_from_reference": 0.0001304412937264623
+    },
+    {
+      "step": 8,
+      "checkpoint": "checkpoint-8",
+      "proxy_win_rate": 0.9166666666666666,
+      "external_win_rate": 0.9166666666666666,
+      "goodhart_gap": 0.0,
+      "external_swap_consistency": 1.0,
+      "external_invalid_verdicts": 0.0,
+      "mean_chars": 1799.0833333333333,
+      "length_reward_corr": 0.5104895104895105,
+      "kl_from_reference": 0.0008336145237485289
+    },
+    {
+      "step": 12,
+      "checkpoint": "checkpoint-12",
+      "proxy_win_rate": 0.9583333333333333,
+      "external_win_rate": 0.9375,
+      "goodhart_gap": 0.020833333333333315,
+      "external_swap_consistency": 1.0,
+      "external_invalid_verdicts": 0.0,
+      "mean_chars": 1781.0,
+      "length_reward_corr": 0.6713286713286714,
+      "kl_from_reference": 0.0014802198256215742
+    },
+    {
+      "step": 16,
+      "checkpoint": "checkpoint-16",
+      "proxy_win_rate": 1.0,
+      "external_win_rate": 0.9583333333333333,
+      "goodhart_gap": 0.041666666666666685,
+      "external_swap_consistency": 1.0,
+      "external_invalid_verdicts": 0.0,
+      "mean_chars": 1797.9166666666667,
+      "length_reward_corr": 0.5034965034965035,
+      "kl_from_reference": 0.0016962889952880304
+    }
+  ],
+  "summary": {
+    "n_points": 5,
+    "gap_first": 0.0,
+    "gap_last": 0.041666666666666685,
+    "gap_max": 0.041666666666666685,
+    "gap_max_step": 16,
+    "spearman_step_gap": 0.6155870112510925,
+    "spearman_kl_gap": 0.6155870112510925
+  },
+  "environment": {
+    "timestamp_utc": "2026-10-26T20:12:16.190041+00:00",
+    "git_sha": "ab4f2e1",
+    "git_dirty": false,
+    "python": "3.13.17",
+    "platform": "Linux-6.18.44-fc-v153-x86_64-with-glibc2.39",
+    "torch_version": "2.14.1+cu130",
+    "transformers_version": "4.57.6",
+    "trl_version": "0.20.0",
+    "peft_version": "0.21.2",
+    "datasets_version": "5.0.1",
+    "accelerate_version": "1.15.0",
+    "cuda": "13.0",
+    "gpu_count": 0,
+    "gpu_name": null
+  }
+}

@@ -6,14 +6,17 @@ reporting. Running every stage in sequence — each consuming the previous
 stage's checkpoint, then evaluation and diagnostics rebuilding those models —
 is what tests the seams between them, and that is where these defects were.
 
-Eleven turned up. Ten are code defects, each now fixed and covered by a
+Thirteen turned up. Twelve are code defects, each now fixed and covered by a
 regression test; one (5) is an artifact of the offline fixture's tokenizer and
-is recorded as such. Two of them change results without raising
-anything: 3, which froze the model body under LoRA, and 6, which evaluated
-DPO and GRPO checkpoints as a model that was never trained.
+is recorded as such. Three of them change results without raising
+anything: 3, which froze the model body under LoRA; 6, which evaluated
+DPO and GRPO checkpoints as a model that was never trained; and 12, which
+scored every reward-model judgement on text in a format the reward model was
+never trained on.
 
 Defects 1–5 surfaced on the first full run; 6–11 came from a second, adversarial
-audit of the evaluation and diagnostics code.
+audit of the evaluation and diagnostics code; 12–13 came from preparing the
+first run on real data and a GPU.
 
 Environment: 2 CPU cores, 7 GB RAM, no GPU, no Hugging Face Hub access. A
 0.67 M-parameter Qwen2-architecture model (4 layers, hidden 128) and a 240-pair
@@ -256,6 +259,55 @@ evaluation would have crashed on every checkpoint. vLLM is now used only for
 full model directories; adapter runs go through `load_for_inference`
 (`test_generate_skips_vllm_for_adapter_directories`).
 
+## 12. The reward-model judge scored text in a format the reward model never saw
+
+`RewardModelJudge.score` built its input as `f"{prompt}\n\n{response}"`.
+TRL's `RewardTrainer` does something else with a conversational pair: it
+renders `chosen` and `rejected` through the tokenizer's chat template
+(`maybe_apply_chat_template`) and then tokenizes that text. The scalar head is
+therefore trained only on chat-formatted conversations, and every score the
+harness computed — the RM-judged win-rate in `evaluate`, `length_reward_corr`
+and the RM win-rate in `diagnostics`, the proxy side of `goodhart` — came from
+text outside its training distribution. Nothing errors: the scores are a
+different function of the response, not obviously wrong ones.
+
+It came up while choosing an independent public reward model as the external
+judge for the first run on real data. Its model card specifies chat-template
+input, and checking our own reward model's training path against that showed
+the same requirement had been missed.
+
+On the seeded fixture, with training unchanged (DPO eval reward margin 0.445
+and KL 0.0017 in both runs), scoring the chat-formatted text moves:
+
+| | before | after |
+|---|---|---|
+| DPO RM-judged win-rate vs SFT | 0.958 (0.917, 1.000) | 1.000 (1.000, 1.000) |
+| DPO `length_reward_corr` | 0.385 | 0.503 |
+| GRPO `length_reward_corr` | 0.643 | 0.818 |
+| GRPO RM-judged win-rate vs SFT | 0.500 | 0.417 |
+| DPO Goodhart gap, last checkpoint | 0.000 | 0.042 |
+
+The verbosity signal the fixture plants (chosen responses are longer) shows up
+more strongly once the reward model reads the format it learned on. The size
+of the effect on real data is measured by the small run's judge checks
+(`notebooks/small_real_run.ipynb`), which score the same held-out pairs both
+ways.
+
+**Fix:** `RewardModelJudge.format()` renders `[user, assistant]` through the
+chat template exactly as `RewardTrainer` does, and `score()` tokenizes that.
+The plain join is kept only for tokenizers with no chat template.
+`test_judge_scores_the_text_the_reward_trainer_trained_on` compares the judge's
+input with TRL's own `maybe_apply_chat_template` output.
+
+## 13. Evaluation ran in emulated bf16 on GPUs without native bf16
+
+`inference_dtype` chose bfloat16 whenever `torch.cuda.is_bf16_supported()` was
+true. That probe defaults to `including_emulation=True`, so on a T4 (compute
+capability 7.5) it returns True and generation, the judge and the KL
+measurement ran in emulated bf16, even in a run that trained in float32 because
+the GPU has no bf16 units. `native_bf16()` now requires compute capability 8.0+
+(`test_emulated_bf16_is_not_used_for_inference`).
+
 ---
 
 ## What the run establishes
@@ -270,8 +322,8 @@ is intact and the learning rate suits a randomly initialised model. DPO moves
 its implicit-reward metrics in the right direction (eval `rewards/accuracies`
 1.0, margin 0.44), and position-swapped evaluation, bootstrap intervals and
 all five reward-hacking diagnostics compute on its output: RM-judged win-rate
-95.8% over two generation seeds (91.7% and 100%), swap consistency 1.0, no
-invalid verdicts.
+100% over two generation seeds, swap consistency 1.0, no invalid verdicts
+(95.8% before the judge read the chat format, per 12).
 
 **Next:** the ablation grid — beta sweep, group size, reward-model quality — at
 1.5B on GPU. That is where the comparisons between methods come from; this run

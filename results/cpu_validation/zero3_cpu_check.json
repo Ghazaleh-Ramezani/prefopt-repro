@@ -1,0 +1,30 @@
+{
+  "world_size": 2,
+  "zero_stage": 3,
+  "backend": "gloo (DeepSpeed CPU accelerator)",
+  "deepspeed_version": "0.19.8",
+  "torch_version": "2.14.1+cu130",
+  "parameters_total": 671488,
+  "parameters_held_by_rank0": 335744,
+  "rank0_share": 0.5,
+  "steps": 6,
+  "loss_zero3": [
+    6.5095109939575195,
+    6.202106952667236,
+    5.957704544067383,
+    5.773148059844971,
+    5.608422756195068,
+    5.444777965545654
+  ],
+  "loss_single_process": [
+    6.5095109939575195,
+    6.202106952667236,
+    5.957704544067383,
+    5.7731475830078125,
+    5.608422756195068,
+    5.444777965545654
+  ],
+  "max_abs_loss_difference": 4.76837158203125e-07,
+  "max_abs_parameter_difference": 1.8132850527763367e-06,
+  "match": true
+}

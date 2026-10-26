@@ -34,9 +34,9 @@
       "step": 10
     },
     {
-      "train_runtime": 6.1692,
-      "train_samples_per_second": 5.187,
-      "train_steps_per_second": 2.594,
+      "train_runtime": 18.6449,
+      "train_samples_per_second": 1.716,
+      "train_steps_per_second": 0.858,
       "total_flos": 0.0,
       "train_loss": -0.014306535944342613,
       "num_tokens": 6896.0,
