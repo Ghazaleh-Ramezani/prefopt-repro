@@ -205,11 +205,38 @@ class RewardModelJudge:
         )
         self.model.config.pad_token_id = self.tok.pad_token_id
 
-    def score(self, prompt: str, response: str) -> float:
-        text = f"{prompt}\n\n{response}"
-        enc = self.tok(text, return_tensors="pt", truncation=True, max_length=2048).to(
-            self.model.device
+    def format(self, prompt: str, response: str) -> str:
+        """The text the reward model scores: the conversation rendered through
+        the tokenizer's chat template, which is what it was trained on.
+
+        TRL's RewardTrainer renders conversational chosen/rejected pairs with
+        the chat template before tokenizing, so the scalar head has only ever
+        seen chat-formatted conversations. Scoring a bare "prompt\\n\\nresponse"
+        string instead asks it about text outside its training distribution.
+        Nothing errors; the scores are just a noisier and differently biased
+        signal, which moves the win-rate, the length-reward correlation and
+        the Goodhart gap. Public reward models such as Skywork-Reward-V2
+        document the same chat-template input. The plain join is kept only for
+        tokenizers that have no chat template.
+        """
+        if not getattr(self.tok, "chat_template", None):
+            return f"{prompt}\n\n{response}"
+        text = self.tok.apply_chat_template(
+            [
+                {"role": "user", "content": prompt},
+                {"role": "assistant", "content": response},
+            ],
+            tokenize=False,
         )
+        return text
+
+    def score(self, prompt: str, response: str) -> float:
+        enc = self.tok(
+            self.format(prompt, response),
+            return_tensors="pt",
+            truncation=True,
+            max_length=2048,
+        ).to(self.model.device)
         with self._torch.no_grad():
             return float(self.model(**enc).logits[0][0])
 

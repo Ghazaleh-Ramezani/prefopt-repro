@@ -94,9 +94,23 @@ def inference_dtype(preferred: str | None = None) -> Any:
     """
     if preferred and preferred != "bfloat16":
         return DTYPES[preferred]
-    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+    if torch.cuda.is_available() and native_bf16():
         return torch.bfloat16
     return torch.float32
+
+
+def native_bf16() -> bool:
+    """True when the GPU computes in bf16 natively (compute capability 8.0+).
+
+    `torch.cuda.is_bf16_supported()` defaults to `including_emulation=True`
+    and so also returns True on older GPUs such as the T4, where bf16 is
+    emulated. Evaluation there ran in emulated bf16 even when the run itself
+    trained in float32.
+    """
+    if not torch.cuda.is_available():
+        return False
+    major, _ = torch.cuda.get_device_capability()
+    return major >= 8
 
 
 def _is_adapter_dir(path: str) -> bool:
