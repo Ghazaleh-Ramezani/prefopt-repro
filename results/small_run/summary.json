@@ -1,0 +1,40 @@
+{
+  "git_sha": "d6d7d54",
+  "gpu": "Tesla T4",
+  "dtype": "float32",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "judge": "Skywork/Skywork-Reward-V2-Qwen3-0.6B",
+  "n_sft": 1000,
+  "n_rm_pairs": 2000,
+  "n_dpo_pairs": 1000,
+  "beta": 0.1,
+  "n_prompts": 150,
+  "seeds": 2,
+  "rm_eval_accuracy": 0.6877637130801688,
+  "win_rate_mean": 0.6,
+  "win_rate_per_seed": [
+    [
+      0.5433333333333333,
+      [
+        0.4633333333333333,
+        0.6233333333333333
+      ]
+    ],
+    [
+      0.6566666666666666,
+      [
+        0.5833333333333334,
+        0.73
+      ]
+    ]
+  ],
+  "proxy_rm_win_rate_seed0": 0.6033333333333334,
+  "goodhart_gap_seed0": 0.06000000000000005,
+  "kl_from_reference": 0.01956307939114002,
+  "length_reward_corr": -0.18058466806520865,
+  "mean_chars_policy": 1402.7933333333333,
+  "mean_chars_reference": 1141.54,
+  "minutes_per_stage": {
+    "judge_checks": 8.4
+  }
+}
