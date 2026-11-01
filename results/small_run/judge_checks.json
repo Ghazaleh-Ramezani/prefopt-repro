@@ -1,0 +1,7 @@
+{
+  "n_pairs": 500,
+  "independent_judge_label_agreement": 0.748,
+  "trained_rm_accuracy_chat_format": 0.682,
+  "trained_rm_accuracy_plain_format": 0.492,
+  "trainer_eval_accuracy": 0.6877637130801688
+}

@@ -1,0 +1,11 @@
+{
+  "train": {
+    "requested": 2000,
+    "kept": 1871
+  },
+  "eval": {
+    "requested": 500,
+    "kept": 474
+  },
+  "max_length": 1024
+}

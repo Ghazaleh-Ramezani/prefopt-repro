@@ -1,0 +1,25 @@
+{
+  "policy": "/content/drive/MyDrive/prefopt_small_run/runs/dpo_b0.1",
+  "reference": "/content/drive/MyDrive/prefopt_small_run/runs/sft",
+  "reward_model": "/content/drive/MyDrive/prefopt_small_run/runs/rm",
+  "n_prompts": 150,
+  "mean_rm_score_policy": 0.1598417369524638,
+  "mean_rm_score_reference": 0.07940658529599508,
+  "rm_judged_win_rate": 0.6033333333333334,
+  "length_reward_corr": -0.18058466806520865,
+  "distinct_4_policy": 0.9744956373641109,
+  "distinct_4_reference": 0.9781423090516824,
+  "style_policy": {
+    "header_rate": 0.13333333333333333,
+    "bullet_rate": 0.28,
+    "enthusiasm_rate": 0.08666666666666667,
+    "mean_chars": 1402.7933333333333
+  },
+  "style_reference": {
+    "header_rate": 0.10666666666666667,
+    "bullet_rate": 0.19333333333333333,
+    "enthusiasm_rate": 0.07333333333333333,
+    "mean_chars": 1141.54
+  },
+  "kl_from_reference": 0.01956307939114002
+}

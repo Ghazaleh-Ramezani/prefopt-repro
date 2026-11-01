@@ -1,0 +1,16 @@
+{
+  "timestamp_utc": "2026-10-27T00:14:01.330908+00:00",
+  "git_sha": "d6d7d54",
+  "git_dirty": false,
+  "python": "3.13.16",
+  "platform": "Linux-6.6.159+-x86_64-with-glibc2.39",
+  "torch_version": "2.11.0+cu130",
+  "transformers_version": "4.57.6",
+  "trl_version": "0.20.0",
+  "peft_version": "0.21.2",
+  "datasets_version": "5.0.1",
+  "accelerate_version": "1.15.0",
+  "cuda": "13.0",
+  "gpu_count": 1,
+  "gpu_name": "Tesla T4"
+}
