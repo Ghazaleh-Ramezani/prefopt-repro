@@ -10,6 +10,69 @@ The question the repo is built to answer: **how do KL strength, group size, and
 reward-model quality trade off against win-rate, and where does optimising the
 proxy start to cost real quality?**
 
+## Small run: what came out
+
+One completed run on real data. Qwen2.5-0.5B-Instruct, UltraFeedback-binarized
+pairs, LoRA throughout, DPO at `beta=0.1`, one epoch per stage on a Colab T4.
+Artifacts, resolved configs and environment records are in
+[`results/small_run/`](results/small_run/), all carrying git SHA `d6d7d54`.
+
+| Measure | Value |
+|---|---|
+| Win-rate vs the SFT baseline | **60.0%**, 95% CI [54.0, 66.0] |
+| Spread across the two generation seeds | 54.3% / 65.7% |
+| Reward-model held-out pairwise accuracy | 68.8% (326/474 pairs) |
+| DPO implicit-reward accuracy, held-out pairs | 60.5% |
+| KL from the reference policy | 0.020 |
+| Goodhart gap (proxy RM minus independent judge) | 0.060 |
+| Spearman(length, RM score) | -0.18 |
+
+The judge is a public reward model, `Skywork/Skywork-Reward-V2-Qwen3-0.6B`,
+which takes no part in training. It agrees with the dataset's own preference
+labels on 74.8% of 500 held-out pairs, and that is the number to read the
+win-rate against: a judge is a measuring instrument, and an uncalibrated one
+settles nothing.
+
+**The finding worth more than the win-rate.** The trained reward model scores
+68.2% on held-out pairs when responses are rendered through the chat template,
+and **49.2% — chance — on the same pairs as plain `prompt\n\nresponse` text**
+(`results/small_run/judge_checks.json`). It has not learned to rank responses;
+it has learned to rank them in one surface form. Until the fix in
+[`docs/DEBUGGING_LOG.md` §12](docs/DEBUGGING_LOG.md#12-the-reward-model-judge-scored-text-in-a-format-the-reward-model-never-saw),
+the harness's own judge scored plain text, so on real data every RM-judged
+number it produced — the proxy win-rate, `length_reward_corr`, the proxy side
+of the Goodhart gap — would have carried no preference signal, and nothing would
+have raised an error. The defect was caught by reading the external judge's
+model card, not by any metric. This check is what puts a size on it.
+
+**On the interval.** `RESULTS.md` reports [46.3, 73.0], which is the envelope
+of the two per-seed intervals rather than an interval for the pooled estimate:
+it charges the gap between seed means as estimation error, when averaging over
+seeds is precisely what removes it. Stacking all 300 comparisons would err the
+other way, since both seeds answer the same 150 prompts. Averaging each prompt
+across seeds and resampling prompts gives [54.0, 66.0]:
+
+```bash
+python scripts/pooled_win_rate.py \
+    results/small_run/dpo_b0.1/per_prompt_scores.json
+```
+
+`per_prompt_scores.json` is the judged score for each prompt under each seed —
+the table the interval is computed from, committed so the number above can be
+checked rather than taken. The prompt text and per-order verdicts stay in the
+run directory and come back from `prefopt.evaluate`.
+
+The interval clears 0.5, but two seeds eleven points apart is the more
+informative number. Generation variance here is about the size of the effect,
+and two seeds cannot estimate it.
+
+**What this run does not establish.** One `beta`, so the KL sweep below is
+untouched and its peak unlocated. No GRPO — the small run is SFT → RM → DPO
+only. 0.5B, not the 1.5B the grid is written for. And `swap_consistency` reads
+1.000 here for an uninteresting reason: a reward model scores each response on
+its own, so there is no position to swap. That column carries information only
+under an LLM judge.
+
 ## Status
 
 **Verified end to end.** Every stage runs and hands its checkpoint to the
@@ -21,7 +84,7 @@ a rerun reproduces the published artifacts exactly. Each artifact carries a
 resolved config and an environment record (git SHA, library versions), in
 [`results/cpu_validation/`](results/cpu_validation/).
 
-Bringing the pipeline up end to end surfaced twelve code defects, each fixed
+Bringing the pipeline up end to end surfaced thirteen code defects, each fixed
 and covered by a regression test. Three of them change results without raising
 an error: reentrant gradient checkpointing freezing the model body under LoRA,
 DPO/GRPO checkpoints being reloaded onto the raw base rather than the
@@ -30,11 +93,12 @@ plain `prompt\n\nresponse` text while the reward model is trained on
 chat-template text. Symptom, isolation, cause and fix for each are in
 [`docs/DEBUGGING_LOG.md`](docs/DEBUGGING_LOG.md).
 
-**Small run on real data:**
+**Small run on real data: done.**
 [`notebooks/small_real_run.ipynb`](notebooks/small_real_run.ipynb) runs
 SFT → reward model → DPO on Qwen2.5-0.5B-Instruct with UltraFeedback pairs and
 judges the win-rate with an independent public reward model, in roughly one to
-two hours on a free Colab T4.
+two hours on a free Colab T4. Numbers above; artifacts in
+[`results/small_run/`](results/small_run/).
 
 **Next study:** the ablation grid below, at 1.5B on GPU. The grid is the
 design; the CPU validation run establishes the wiring the grid depends on.
@@ -183,7 +247,7 @@ src/prefopt/
   diagnostics.py    reward-hacking measurements
   report.py         run aggregation and card rendering
 cards/              Jinja templates for Hub model/dataset cards
-scripts/            smoke test and full ablation grid
+scripts/            smoke test, full ablation grid, pooled win-rate
 tests/              CPU-only tests for config, rewards, stats, reporting
 ```
 
@@ -192,12 +256,16 @@ tests/              CPU-only tests for config, rewards, stats, reporting
 Stated here rather than buried, because they bound what the results support:
 
 - Win-rates in `results/cpu_validation/` come from an offline 0.67M-parameter
-  fixture and check the wiring. Method comparisons come from the 1.5B grid.
-- One base-model family at 1.5B; behaviour at 7B and above is a separate
-  question.
+  fixture and check the wiring. `results/small_run/` is one real DPO run at
+  0.5B, at a single `beta`. Method comparisons come from the 1.5B grid, which
+  has not been run.
+- One base-model family: 0.5B measured, 1.5B designed for. Behaviour at 7B and
+  above is a separate question.
 - LoRA rather than full-parameter training, which limits policy movement.
-- A single LLM judge with no measured human agreement — `swap_consistency` is a
-  self-consistency check, not a validity check.
+- The small run is judged by a public reward model agreeing with the dataset's
+  own labels on 74.8% of held-out pairs, and with no measured human agreement.
+  Under a reward model `swap_consistency` is vacuous, since position never
+  enters the score; it is a real check only under an LLM judge.
 - One preference dataset with known verbosity bias, so `length_reward_corr` is
   partly inherited from the data rather than created by training.
 - GRPO here optimises a learned RM, not a verifiable reward, so it is the
