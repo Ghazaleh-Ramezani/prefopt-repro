@@ -59,8 +59,9 @@ python scripts/pooled_win_rate.py \
 
 `per_prompt_scores.json` is the judged score for each prompt under each seed —
 the table the interval is computed from, committed so the number above can be
-checked rather than taken. The prompt text and per-order verdicts stay in the
-run directory and come back from `prefopt.evaluate`.
+checked rather than taken. `results.json` beside it is the full evaluation
+output, with the prompt text and the judge's verdict in both orders; the script
+reads either.
 
 The interval clears 0.5, but two seeds eleven points apart is the more
 informative number. Generation variance here is about the size of the effect,
