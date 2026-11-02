@@ -160,7 +160,7 @@ Results land in `RESULTS.md`, one row per run, each backed by a
 
 ## Evaluation, and why it is built this way
 
-`prefopt/evaluate.py` reports win-rate against the SFT baseline with three
+`prefopt/evaluate.py` reports win-rate against the SFT baseline with four
 protections that most single-number comparisons skip:
 
 - **Position swap.** Every pair is judged twice, A/B and B/A. A win counts only
@@ -171,6 +171,18 @@ protections that most single-number comparisons skip:
   interval. Reporting 61.2% without one overstates what the run established.
 - **Multi-seed generation.** Sampling variance across seeds is often larger than
   the method delta being claimed, so the harness reports the seed spread.
+- **Judge diagnostics.** Swap consistency says how often the judge agrees with
+  itself, not which way it leans. Each seed also reports the tie rate in each
+  order, the parse rate, and a slot coefficient `slot_bias` with a bootstrap
+  interval, from a Bradley–Terry model with a position term,
+  P(A) = σ(θ_A − θ_B + b), fitted on the verdicts in both orders; b > 0 leans
+  toward slot A. The summary records the judge prompt and decoding settings
+  verbatim (`judge_format`), and the LLM judge decodes greedily unless
+  `--judge-temperature` says otherwise. Together these cover the reporting
+  checklist of [*The Format is the Filter*](https://arxiv.org/abs/2610.17158)
+  (Gondara et al., 2026) as it applies to a pairwise judge: the format and
+  decoding rule, the tie rate, how slots were balanced and the estimated b, and
+  the parse rate.
 
 ## Reward-hacking diagnostics
 
@@ -265,8 +277,9 @@ Stated here rather than buried, because they bound what the results support:
 - LoRA rather than full-parameter training, which limits policy movement.
 - The small run is judged by a public reward model agreeing with the dataset's
   own labels on 74.8% of held-out pairs, and with no measured human agreement.
-  Under a reward model `swap_consistency` is vacuous, since position never
-  enters the score; it is a real check only under an LLM judge.
+  Under a reward model `swap_consistency` and `slot_bias` are vacuous, since
+  position never enters the score; they are real checks only under an LLM
+  judge, and no committed result has been judged by one yet.
 - One preference dataset with known verbosity bias, so `length_reward_corr` is
   partly inherited from the data rather than created by training.
 - GRPO here optimises a learned RM, not a verifiable reward, so it is the
