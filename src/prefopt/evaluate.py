@@ -1,6 +1,6 @@
 """Win-rate evaluation against the SFT baseline.
 
-Three choices here are what make the number defensible:
+Four choices here are what make the number defensible:
 
 1. **Position swap.** Every pair is judged twice, A/B and B/A. A win counts
    only when the judge agrees with itself; disagreement is scored as a tie and
@@ -12,6 +12,12 @@ Three choices here are what make the number defensible:
 3. **Multi-seed generation.** Sampling temperature moves win-rate by more than
    most method deltas, so the harness repeats generation across seeds and
    reports the spread.
+4. **Judge diagnostics.** Swap consistency says how often the judge agrees
+   with itself, not which way it leans when it does not. `judge_diagnostics`
+   reports the tie rate in each order, the parse rate, and a slot coefficient
+   estimated from both orders, and the summary records the judge's format and
+   decoding settings verbatim. A win-rate means little without them: the same
+   pairs scored under a different format or temperature give a different number.
 
     python -m prefopt.evaluate --policy runs/dpo_b0.1 --baseline runs/sft \
         --config configs/dpo.yaml --judge anthropic --n 300 --seeds 3
@@ -159,7 +165,27 @@ def _parse_verdict(text: str) -> str:
 
 @dataclass
 class AnthropicJudge:
+    """Pairwise LLM judge with greedy decoding.
+
+    The temperature is passed explicitly. Left out, the Messages API samples at
+    temperature 1.0, so each verdict was a draw rather than the judge's
+    preference: repeated calls on the same pair could disagree, which lowers
+    swap consistency and turns flips into ties for reasons unrelated to
+    position. Nothing errors when that happens.
+    """
+
     model: str = "claude-sonnet-4-6"
+    temperature: float = 0.0
+    max_tokens: int = 8
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            "kind": "llm_pairwise",
+            "model": self.model,
+            "prompt": JUDGE_PROMPT,
+            "verdicts": list(VALID_VERDICTS),
+            "decoding": {"temperature": self.temperature, "max_tokens": self.max_tokens},
+        }
 
     def compare(self, prompt: str, a: str, b: str) -> str:
         import anthropic
@@ -167,7 +193,8 @@ class AnthropicJudge:
         client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
         msg = client.messages.create(
             model=self.model,
-            max_tokens=8,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
             messages=[
                 {
                     "role": "user",
@@ -240,23 +267,160 @@ class RewardModelJudge:
         with self._torch.no_grad():
             return float(self.model(**enc).logits[0][0])
 
+    def describe(self) -> dict[str, Any]:
+        # Scored one response at a time, so slot position never enters the
+        # verdict: swap consistency and the slot coefficient are trivially 1.0
+        # and 0 under this judge and say nothing about it.
+        return {
+            "kind": "reward_model_pointwise",
+            "rm_path": self.rm_path,
+            "input_format": (
+                "chat_template" if getattr(self.tok, "chat_template", None) else "plain_join"
+            ),
+            "tie_threshold": RM_TIE_THRESHOLD,
+        }
+
     def compare(self, prompt: str, a: str, b: str) -> str:
         sa, sb = self.score(prompt, a), self.score(prompt, b)
-        if abs(sa - sb) < 1e-3:
+        if abs(sa - sb) < RM_TIE_THRESHOLD:
             return "TIE"
         return "A" if sa > sb else "B"
 
 
+RM_TIE_THRESHOLD = 1e-3
+
+
 def build_judge(
-    kind: str, rm_path: str | None, model: str | None, base_model: str | None = None
+    kind: str,
+    rm_path: str | None,
+    model: str | None,
+    base_model: str | None = None,
+    temperature: float = 0.0,
 ) -> Judge:
     if kind == "anthropic":
-        return AnthropicJudge(model=model or "claude-sonnet-4-6")
+        return AnthropicJudge(model=model or "claude-sonnet-4-6", temperature=temperature)
     if kind == "rm":
         if not rm_path:
             raise ValueError("--rm-path is required for --judge rm")
         return RewardModelJudge(rm_path=rm_path, base_model=base_model)
     raise ValueError(f"Unknown judge: {kind}")
+
+
+# --------------------------------------------------------------------------- #
+# Judge diagnostics
+# --------------------------------------------------------------------------- #
+
+
+def _rate(numerator: int, denominator: int) -> float | None:
+    return numerator / denominator if denominator else None
+
+
+def judge_diagnostics(
+    records: list[dict[str, Any]],
+    n_boot: int = 10000,
+    alpha: float = 0.05,
+    seed: int = 0,
+    smoothing: float = 0.5,
+) -> dict[str, Any]:
+    """Tie rate, parse rate and slot bias of a pairwise judge, from the
+    per-prompt verdicts `win_rate` records in both orders.
+
+    The slot coefficient comes from a Bradley-Terry model with an additive
+    position term,
+
+        P(judge names slot A) = sigmoid(theta_A - theta_B + b),
+
+    fitted on decisive verdicts (A or B; ties and invalid replies excluded).
+    With the policy in slot A the logit of P(A) is d + b, and with the policy
+    in slot B it is -d + b, where d = theta_policy - theta_baseline. So
+
+        b = (logit p_AB + logit p_BA) / 2,    d = (logit p_AB - logit p_BA) / 2,
+
+    with p_AB the share of decisive verdicts naming A when the policy is shown
+    first and p_BA the same share with the order swapped. b > 0 leans toward
+    slot A, b < 0 toward slot B. d is the quality difference with the position
+    effect taken out; it is pooled over prompts, so with heterogeneous prompts
+    it is attenuated toward zero, but b keeps its sign and scale.
+
+    Counts are smoothed by `smoothing` per outcome (0.5 by default), so a judge
+    that never names one slot still gets a finite b. A judge that agrees with
+    itself on every pair gets b = 0 exactly, and so does any pointwise judge,
+    such as a reward model, for which the coefficient is uninformative.
+
+    The intervals resample prompts, the independent unit here. `b` is None when
+    either order has no decisive verdict, because then nothing separates the
+    position effect from the quality difference.
+    """
+    import numpy as np
+
+    n = len(records)
+    ab = np.array([r["verdict_ab"] for r in records], dtype=object)
+    ba = np.array([r["verdict_ba"] for r in records], dtype=object)
+
+    def order_stats(verdicts: Any) -> dict[str, Any]:
+        decisive = int(np.isin(verdicts, ["A", "B"]).sum())
+        return {
+            "n": int(verdicts.size),
+            "tie_rate": _rate(int((verdicts == "TIE").sum()), int(verdicts.size)),
+            "invalid_rate": _rate(int((verdicts == "INVALID").sum()), int(verdicts.size)),
+            "n_decisive": decisive,
+            "p_slot_a": _rate(int((verdicts == "A").sum()), decisive),
+        }
+
+    out: dict[str, Any] = {
+        "n_pairs": n,
+        "order_ab": order_stats(ab),
+        "order_ba": order_stats(ba),
+        "verdict_tie_rate": _rate(int((ab == "TIE").sum() + (ba == "TIE").sum()), 2 * n),
+        "parse_rate": (
+            1.0 - int((ab == "INVALID").sum() + (ba == "INVALID").sum()) / (2 * n) if n else None
+        ),
+        "slot_a_rate": None,
+        "slot_bias": None,
+        "slot_bias_ci95": None,
+        "quality_logit": None,
+        "quality_logit_ci95": None,
+        "smoothing": smoothing,
+    }
+
+    a1 = (ab == "A").astype(float)
+    d1 = np.isin(ab, ["A", "B"]).astype(float)
+    a2 = (ba == "A").astype(float)
+    d2 = np.isin(ba, ["A", "B"]).astype(float)
+    n1, n2 = d1.sum(), d2.sum()
+    if n1 + n2:
+        out["slot_a_rate"] = float((a1.sum() + a2.sum()) / (n1 + n2))
+    if not (n1 and n2):
+        return out
+
+    def logit(k: Any, m: Any) -> Any:
+        p = (k + smoothing) / (m + 2 * smoothing)
+        return np.log(p / (1.0 - p))
+
+    def estimate(k1: Any, m1: Any, k2: Any, m2: Any) -> tuple[Any, Any]:
+        l1, l2 = logit(k1, m1), logit(k2, m2)
+        return (l1 + l2) / 2.0, (l1 - l2) / 2.0
+
+    b, d = estimate(a1.sum(), n1, a2.sum(), n2)
+
+    # Resampling prompts only changes how many prompts fall into each
+    # (verdict_ab, verdict_ba) combination, so a multinomial draw over the
+    # combinations is the same bootstrap without materialising n_boot x n
+    # indices.
+    keys = sorted({(x, y) for x, y in zip(ab, ba)})
+    counts = np.array([sum(1 for x, y in zip(ab, ba) if (x, y) == k) for k in keys])
+    flags = np.array(
+        [[x == "A", x in ("A", "B"), y == "A", y in ("A", "B")] for x, y in keys], dtype=float
+    )
+    rng = np.random.default_rng(seed)
+    totals = rng.multinomial(n, counts / n, size=n_boot) @ flags
+    bb, dd = estimate(totals[:, 0], totals[:, 1], totals[:, 2], totals[:, 3])
+    q = [alpha / 2, 1 - alpha / 2]
+    out["slot_bias"] = float(b)
+    out["slot_bias_ci95"] = [float(v) for v in np.quantile(bb, q)]
+    out["quality_logit"] = float(d)
+    out["quality_logit_ci95"] = [float(v) for v in np.quantile(dd, q)]
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -325,10 +489,15 @@ def win_rate(
         "losses": sum(1 for s in scores if s == 0.0),
         "swap_consistency": consistent / max(len(scores), 1),
         "invalid_verdicts": invalid,
+        "judge_diagnostics": judge_diagnostics(records),
         "mean_len_policy": sum(len(p) for p in policy) / max(len(policy), 1),
         "mean_len_baseline": sum(len(b) for b in baseline) / max(len(baseline), 1),
         "records": records,
     }
+
+
+def _fmt_opt(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.3f}"
 
 
 def main() -> None:
@@ -350,6 +519,12 @@ def main() -> None:
     parser.add_argument("--baseline", required=True, help="Path to the SFT baseline.")
     parser.add_argument("--judge", default="anthropic", choices=["anthropic", "rm"])
     parser.add_argument("--judge-model", default=None)
+    parser.add_argument(
+        "--judge-temperature",
+        type=float,
+        default=0.0,
+        help="Decoding temperature of the LLM judge (default greedy).",
+    )
     parser.add_argument("--rm-path", default=None)
     parser.add_argument("--n", type=int, default=300)
     parser.add_argument("--seeds", type=int, default=3)
@@ -359,7 +534,13 @@ def main() -> None:
 
     cfg = load_config(args.config, args.overrides)
     prompts = load_eval_prompts(cfg, n=args.n)
-    judge = build_judge(args.judge, args.rm_path, args.judge_model, cfg.model.base_model)
+    judge = build_judge(
+        args.judge,
+        args.rm_path,
+        args.judge_model,
+        cfg.model.base_model,
+        temperature=args.judge_temperature,
+    )
 
     per_seed = []
     for seed in range(args.seeds):
@@ -373,13 +554,18 @@ def main() -> None:
         result = win_rate(prompts, pol, base, judge)
         result["seed"] = seed
         per_seed.append(result)
+        diag = result["judge_diagnostics"]
         logger.info(
-            "seed %d: win-rate %.3f [%.3f, %.3f] | swap-consistency %.3f",
+            "seed %d: win-rate %.3f [%.3f, %.3f] | swap-consistency %.3f | "
+            "slot bias %s | verdict tie rate %s | parse rate %s",
             seed,
             result["win_rate"],
             result["ci95"][0],
             result["ci95"][1],
             result["swap_consistency"],
+            _fmt_opt(diag["slot_bias"]),
+            _fmt_opt(diag["verdict_tie_rate"]),
+            _fmt_opt(diag["parse_rate"]),
         )
 
     rates = [r["win_rate"] for r in per_seed]
@@ -388,6 +574,7 @@ def main() -> None:
         "baseline": args.baseline,
         "judge": args.judge,
         "judge_model": args.judge_model,
+        "judge_format": judge.describe() if hasattr(judge, "describe") else None,
         "n_prompts": len(prompts),
         "seeds": args.seeds,
         "win_rate_mean": sum(rates) / len(rates),
