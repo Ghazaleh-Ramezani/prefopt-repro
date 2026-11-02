@@ -61,6 +61,13 @@ def list_checkpoints(run_dir: str | Path) -> list[tuple[int | None, Path]]:
     return out
 
 
+def _mean(values: list[float | None]) -> float | None:
+    """Mean over seeds, skipping undefined values such as a slot bias with no
+    decisive verdicts in one order."""
+    kept = [v for v in values if v is not None]
+    return sum(kept) / len(kept) if kept else None
+
+
 def _spearman(x: list[float], y: list[float]) -> float | None:
     from .diagnostics import spearman
 
@@ -81,6 +88,7 @@ def judge_pair(prompts, policy_out, reference_out, proxy, external) -> dict[str,
         "goodhart_gap": p["win_rate"] - e["win_rate"],
         "external_swap_consistency": e["swap_consistency"],
         "external_invalid_verdicts": e["invalid_verdicts"],
+        "external_slot_bias": e["judge_diagnostics"]["slot_bias"],
     }
 
 
@@ -148,7 +156,7 @@ def main() -> None:
         row: dict[str, Any] = {
             "step": step,
             "checkpoint": path.name,
-            **{k: sum(r[k] for r in per_seed) / len(per_seed) for k in per_seed[0]},
+            **{k: _mean([r[k] for r in per_seed]) for k in per_seed[0]},
             "mean_chars": sum(lengths) / max(len(lengths), 1),
             "length_reward_corr": spearman(lengths, scores) if len(set(lengths)) > 1 else None,
         }
@@ -167,6 +175,7 @@ def main() -> None:
         "reference": args.reference,
         "proxy_reward_model": args.proxy_rm,
         "external_judge": f"rm:{args.judge_rm}" if args.judge == "rm" else f"{args.judge}:{args.judge_model or 'default'}",
+        "external_judge_format": external.describe() if hasattr(external, "describe") else None,
         "n_prompts": len(prompts),
         "seeds": args.seeds,
         "rows": rows,
