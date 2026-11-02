@@ -6,17 +6,19 @@ reporting. Running every stage in sequence — each consuming the previous
 stage's checkpoint, then evaluation and diagnostics rebuilding those models —
 is what tests the seams between them, and that is where these defects were.
 
-Thirteen turned up. Twelve are code defects, each now fixed and covered by a
+Fourteen turned up. Thirteen are code defects, each now fixed and covered by a
 regression test; one (5) is an artifact of the offline fixture's tokenizer and
 is recorded as such. Three of them change results without raising
 anything: 3, which froze the model body under LoRA; 6, which evaluated
 DPO and GRPO checkpoints as a model that was never trained; and 12, which
 scored every reward-model judgement on text in a format the reward model was
-never trained on.
+never trained on. A fourth, 14, would have done the same to any run judged by
+the LLM judge; none of the committed results was.
 
 Defects 1–5 surfaced on the first full run; 6–11 came from a second, adversarial
 audit of the evaluation and diagnostics code; 12–13 came from preparing the
-first run on real data and a GPU.
+first run on real data and a GPU; 14 came from adding judge-format
+diagnostics to the evaluation.
 
 Environment: 2 CPU cores, 7 GB RAM, no GPU, no Hugging Face Hub access. A
 0.67 M-parameter Qwen2-architecture model (4 layers, hidden 128) and a 240-pair
@@ -307,6 +309,29 @@ capability 7.5) it returns True and generation, the judge and the KL
 measurement ran in emulated bf16, even in a run that trained in float32 because
 the GPU has no bf16 units. `native_bf16()` now requires compute capability 8.0+
 (`test_emulated_bf16_is_not_used_for_inference`).
+
+## 14. The LLM judge sampled its verdicts at temperature 1.0
+
+`AnthropicJudge` never passed a temperature, so the Messages API used its
+default of 1.0 and every verdict was a sample rather than the judge's
+preference. Two calls on the same pair could disagree, which shows up as a
+lower `swap_consistency` and as flips scored as ties for reasons that have
+nothing to do with position, and the decoding rule appeared nowhere in
+`results.json`. The judge now decodes greedily unless `--judge-temperature`
+sets otherwise, and the summary records the judge prompt and decoding
+settings under `judge_format`
+(`test_llm_judge_sends_its_temperature_explicitly`).
+
+Adding the settings surfaced what swap consistency leaves out. It counts how
+often the judge agrees with itself, not which slot it favours when it does
+not, so `win_rate` now also reports `judge_diagnostics`: the tie and invalid
+rates in each order, the parse rate, and a slot coefficient b from
+P(A) = σ(θ_A − θ_B + b), fitted on both orders with a bootstrap interval over
+prompts. The tests recover a planted b = 0.8 from simulated verdicts, give
+b = 0 for a judge that agrees with itself and for any pointwise judge, and
+give opposite signs to judges that always name A and always name B
+(`tests/test_judge_diagnostics.py`). Under the reward-model judge of the
+committed runs, b is zero by construction and carries no information.
 
 ---
 
